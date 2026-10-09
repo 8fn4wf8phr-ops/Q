@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Q</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='30' cy='30' r='20' fill='none' stroke='%233be3ff' stroke-width='7'/%3E%3Cpath d='M38 38 L56 56' stroke='%23e9fbff' stroke-width='7' stroke-linecap='round'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="backdrop" aria-hidden="true"></div>
+
+  <header class="top">
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 64 64" aria-hidden="true">
+        <defs>
+          <linearGradient id="mk" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#3be3ff" /><stop offset=".6" stop-color="#2f6bff" /><stop offset="1" stop-color="#8b5cff" />
+          </linearGradient>
+        </defs>
+        <circle cx="30" cy="30" r="19" fill="none" stroke="url(#mk)" stroke-width="6" />
+        <path d="M37 37 L55 55" stroke="#e9fbff" stroke-width="6" stroke-linecap="round" />
+      </svg>
+      <div>
+        <strong>Q</strong>
+        <span>Personal assistant · runs on this Mac</span>
+      </div>
+    </div>
+    <div class="top-right">
+      <span id="clock" class="clock"></span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="stage" id="stage" data-phase="boot" aria-label="Q core">
+      <canvas id="core" title="Click to interrupt"></canvas>
+      <div class="state">
+        <span class="pill" id="statePill"><i class="dot"></i><span id="stateText">Starting</span></span>
+        <p id="stateDetail" class="detail" aria-live="polite"></p>
+      </div>
+      <button id="stop" class="stop" type="button" hidden>Stop <kbd>Esc</kbd></button>
+    </section>
+
+    <section class="convo glass" aria-label="Conversation">
+      <div id="log" class="log" aria-live="polite">
+        <div id="empty" class="empty">
+          <p>Hold <kbd>Space</kbd> (or the mic) and talk. Let go to send.</p>
+          <p class="sub">Or type below. <kbd>Esc</kbd> interrupts Q at any time.</p>
+        </div>
+      </div>
+      <form id="composer" class="composer" autocomplete="off">
+        <button id="mic" class="mic" type="button" aria-label="Hold to talk">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" /></svg>
+        </button>
+        <input id="input" type="text" placeholder="Ask Q anything…" aria-label="Message Q" />
+        <button class="send" type="submit" aria-label="Send">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h14M13 6l6 6-6 6" /></svg>
+        </button>
+      </form>
+    </section>
+
+    <aside class="side">
+      <section class="glass card">
+        <h2>System</h2>
+        <div id="statusRows" class="srows"></div>
+        <p class="net" id="netNote">Bound to 127.0.0.1 · Q's code calls no cloud services · outbound traffic not yet independently verified</p>
+      </section>
+
+      <section class="glass card">
+        <h2>Latency <span class="h2sub">last turn</span></h2>
+        <div class="bigline">
+          <div class="big"><span id="v2v">-.--</span><small>s</small></div>
+          <div class="bigmeta">
+            <span>Voice to voice</span>
+            <span class="badge" id="v2vVerdict" data-kind="idle">No data yet</span>
+          </div>
+        </div>
+        <div id="breakdown" class="breakdown" aria-hidden="true"></div>
+        <div id="latRows" class="lrows">
+          <div class="lrow plain"><span></span><span>Talk to Q once to measure each stage.</span><b></b></div>
+        </div>
+        <div class="hist">
+          <div id="history" class="hbars" aria-hidden="true"></div>
+          <p id="historyNote" class="hnote"></p>
+        </div>
+      </section>
+
+      <section class="glass card">
+        <h2>Voice</h2>
+        <label class="field"><span>Q's voice</span><select id="voice"></select></label>
+        <label class="toggle"><input id="speak" type="checkbox" /><span>Speak replies out loud</span></label>
+        <p class="hint">Edit <code>persona.md</code> to change how Q talks — it's re-read every turn.</p>
+      </section>
+    </aside>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

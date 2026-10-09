@@ -1,0 +1,78 @@
+# Q — v0.1 voice loop
+
+You hold Space and talk. Q transcribes what you said, thinks, and talks back. Everything runs on this Mac.
+
+```
+mic → whisper.cpp → Ollama (llama3.2:3b) → macOS say → speakers
+```
+
+The point of this version is to **measure how fast Q answers on your actual Mac**. The Latency panel times every stage of every turn.
+
+## First run (one time, needs internet)
+
+1. Install **Ollama** from https://ollama.com/download and open it once.
+2. Install **Homebrew** from https://brew.sh if you don't have it.
+3. In this folder:
+
+```bash
+npm run setup     # installs whisper.cpp, downloads the speech model, pulls llama3.2:3b
+npm start
+```
+
+4. Open http://127.0.0.1:4141 and allow the microphone when the browser asks.
+
+After setup, you can turn Wi-Fi off and Q still works.
+
+## Using it
+
+| | |
+|---|---|
+| Hold **Space** (or hold the mic button) | Talk. Let go to send. |
+| **Esc**, Stop, or click the core | Interrupt Q mid-thought or mid-sentence. |
+| Type in the box + Enter | Same loop without the mic. |
+
+## How to read the Latency panel
+
+**Voice to voice** is the time from letting go of Space to hearing Q's first word.
+
+- under 1.5 s: feels live
+- 1.5–3 s: noticeable
+- over 3 s: sluggish
+
+The bar breaks that time into four stages:
+
+- **Speech → text**: whisper.cpp transcribing you.
+- **First token**: the model starting to reply (watch for a cold start on the first turn).
+- **First sentence**: the model finishing its first sentence. Q starts speaking after one sentence, not after the whole reply.
+- **Voice synth**: `say` rendering that sentence to audio.
+
+Try it with VS Code and your browser open too, because that's how you'll actually use it.
+
+## Making Q yours
+
+- **Personality:** edit `persona.md`. Q re-reads it every turn, so you don't need to restart.
+- **Voice:** pick one in the Voice panel. For better voices, go to System Settings → Accessibility → Spoken Content → System Voice → Manage Voices and download a Premium or Enhanced voice. It will show up in the list.
+- **Model and other settings:** copy `q.config.example.json` to `q.config.json` and edit it. For example, set `"model": "qwen2.5:3b"` after running `ollama pull qwen2.5:3b`. Restart Q after you change it.
+
+## What's honest about the UI
+
+The core animates only for real events:
+
+- It pulses for listening only while the mic is recording.
+- It shows thinking only while whisper or the model is working.
+- It shows speaking only while audio is playing.
+
+Memory figures come from Ollama and the server process. The network note says what the code does: the server binds to 127.0.0.1 and calls no cloud services. It doesn't claim outbound traffic has been verified, because it hasn't been yet.
+
+## Files
+
+```
+server.js          local server: /api/transcribe, /api/chat (streamed), /api/speak, /api/status
+persona.md         Q's personality (system prompt)
+public/core.js     the Q core renderer (Canvas 2D, ~30 fps when idle, honors Reduce Motion)
+public/audio.js    push-to-talk capture → 16 kHz WAV, and ordered sentence playback
+public/app.js      state machine, streaming, timing
+scripts/setup.sh   one-time install/download
+```
+
+There are no npm dependencies. You need Node 20+.

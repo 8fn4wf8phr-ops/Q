@@ -1,0 +1,13 @@
+{
+  "model": "llama3.2:3b",
+  "keepAlive": "30m",
+  "temperature": 0.8,
+  "historyTurns": 8,
+  "whisperModel": "models/ggml-base.en.bin",
+  "whisperThreads": 4,
+  "tts": "say",
+  "sayVoice": "",
+  "sayRate": 0,
+  "piperBin": "piper",
+  "piperModel": ""
+}
