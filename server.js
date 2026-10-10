@@ -12,6 +12,7 @@ import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createEchoFilter } from './echo.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(ROOT, 'public');
@@ -497,6 +498,7 @@ async function streamChat(req, res) {
   const idleMs = lastModelUse == null ? null : Date.now() - lastModelUse;
   const started = performance.now();
   let firstTokenMs = null;
+  const echo = createEchoFilter(); // drops a timestamp the model copies back at the start
   try {
     const upstream = await fetch(`${CONFIG.ollamaUrl}/api/chat`, {
       method: 'POST',
@@ -525,9 +527,12 @@ async function streamChat(req, res) {
         const text = msg.message?.content || '';
         if (text) {
           if (firstTokenMs == null) firstTokenMs = performance.now() - started;
-          send({ type: 'token', text });
+          const out = echo.push(text);
+          if (out) send({ type: 'token', text: out });
         }
         if (msg.done) {
+          const held = echo.end();
+          if (held) send({ type: 'token', text: held });
           lastModelUse = Date.now();
           const evalMs = (msg.eval_duration || 0) / 1e6;
           send({
