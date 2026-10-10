@@ -78,6 +78,18 @@ if command -v say >/dev/null 2>&1; then
   ok "macOS voice (say)"
 fi
 
+# 8. Speech helper (keeps the voice loaded; compiled from speech/q-speak.swift)
+if command -v swiftc >/dev/null 2>&1; then
+  todo "Building the speech helper…"
+  if npm run --silent build:speech; then
+    ok "Speech helper (bin/q-speak)"
+  else
+    fail "Speech helper didn't build. Q will use say instead, which is slower."
+  fi
+else
+  todo "swiftc not found (it comes with Xcode or its command line tools). Q will use say instead, which is slower."
+fi
+
 echo
 echo "All set. Start Q with:  npm start"
 echo "Then open http://127.0.0.1:4141 in Safari or Chrome."

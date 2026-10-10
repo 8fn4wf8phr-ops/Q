@@ -7,6 +7,7 @@
   "engines": { "node": ">=20" },
   "scripts": {
     "start": "node server.js",
-    "setup": "bash scripts/setup.sh"
+    "setup": "bash scripts/setup.sh",
+    "build:speech": "mkdir -p bin && swiftc -O -swift-version 5 speech/q-speak.swift -o bin/q-speak"
   }
 }

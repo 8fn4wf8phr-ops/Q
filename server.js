@@ -1,6 +1,7 @@
 // Q — local voice-loop server.
 // Serves the UI and three local endpoints: speech-to-text (whisper.cpp),
-// chat (Ollama, streamed) and text-to-speech (macOS `say` or Piper).
+// chat (Ollama, streamed) and text-to-speech (Q's speech helper, macOS `say`
+// or Piper).
 // Binds to 127.0.0.1 only. Makes no calls to any cloud service.
 // Every external program is run with execFile/spawn and a fixed argument
 // array — never a shell string.
@@ -28,7 +29,8 @@ const DEFAULTS = {
   whisperModel: 'models/ggml-base.en.bin',
   whisperThreads: 4,
   whisperPort: 4142,
-  tts: 'say', // 'say' | 'piper' | 'none'
+  tts: 'helper', // 'helper' (falls back to 'say' if not built) | 'say' | 'piper' | 'none'
+  speechHelperBin: 'bin/q-speak',
   sayVoice: 'Samantha', // falls back to the system voice if not installed
   sayRate: 0,
   piperBin: 'piper',
@@ -36,6 +38,7 @@ const DEFAULTS = {
 };
 
 const CONFIG = await loadConfig();
+let stopping = false;
 
 async function loadConfig() {
   let user = {};
@@ -47,7 +50,7 @@ async function loadConfig() {
   const cfg = { ...DEFAULTS, ...user };
   if (process.env.Q_MODEL) cfg.model = process.env.Q_MODEL;
   if (process.env.Q_PORT) cfg.port = Number(process.env.Q_PORT);
-  for (const key of ['whisperModel', 'piperModel']) {
+  for (const key of ['whisperModel', 'piperModel', 'speechHelperBin']) {
     if (cfg[key] && !path.isAbsolute(cfg[key])) cfg[key] = path.join(ROOT, cfg[key]);
   }
   return cfg;
@@ -182,9 +185,112 @@ async function transcribe(wav) {
 
 // ---------- text-to-speech ----------
 
-const tts = { engine: CONFIG.tts, path: null, available: false, voices: [], lastError: null };
+const tts = { engine: CONFIG.tts, path: null, available: false, voices: [], lastError: null, note: null };
+
+// The speech helper (speech/q-speak.swift) is one process kept running for
+// the life of the server. Requests go in as JSON lines; each reply is a JSON
+// header line followed by that many bytes of 16-bit mono PCM. It answers
+// strictly in order, so replies are matched to requests by position.
+const helper = { proc: null, buf: Buffer.alloc(0), header: null, pending: [], nextId: 1, onReady: null };
+
+function helperDrain() {
+  for (;;) {
+    if (!helper.header) {
+      const nl = helper.buf.indexOf(0x0a);
+      if (nl < 0) return;
+      const msg = JSON.parse(helper.buf.subarray(0, nl).toString('utf8'));
+      helper.buf = helper.buf.subarray(nl + 1);
+      if (msg.ready) { helper.onReady?.(msg.voices || []); continue; }
+      helper.header = msg;
+    }
+    const bytes = helper.header.bytes || 0;
+    if (helper.buf.length < bytes) return;
+    const pcm = Buffer.from(helper.buf.subarray(0, bytes));
+    helper.buf = helper.buf.subarray(bytes);
+    const header = helper.header;
+    helper.header = null;
+    const job = helper.pending.shift();
+    if (!job) continue;
+    clearTimeout(job.timer);
+    if (header.error) job.reject(new Error(`speech helper: ${header.error}`));
+    else job.resolve({ pcm, sampleRate: header.sampleRate, ms: header.ms });
+  }
+}
+
+function startHelper() {
+  return new Promise((resolve) => {
+    let proc;
+    try { proc = spawn(CONFIG.speechHelperBin, [], { stdio: ['pipe', 'pipe', 'ignore'] }); }
+    catch { resolve(null); return; }
+    const giveUp = setTimeout(() => proc.kill(), 8000);
+    helper.proc = proc;
+    helper.buf = Buffer.alloc(0);
+    helper.header = null;
+    helper.onReady = (voices) => { clearTimeout(giveUp); resolve(voices); };
+    proc.stdin.on('error', () => {});
+    proc.stdout.on('data', (d) => {
+      helper.buf = Buffer.concat([helper.buf, d]);
+      try { helperDrain(); } catch { proc.kill(); }
+    });
+    proc.on('error', () => {});
+    proc.on('close', () => {
+      clearTimeout(giveUp);
+      if (helper.proc !== proc) return;
+      helper.proc = null;
+      for (const job of helper.pending.splice(0)) { clearTimeout(job.timer); job.reject(new Error('speech helper stopped')); }
+      resolve(null);
+      if (tts.engine === 'helper' && !stopping) {
+        console.warn('[q] speech helper stopped; falling back to `say`');
+        tts.engine = 'say';
+        tts.note = 'speech helper stopped — using say (slower); restart Q to retry';
+        initTts();
+      }
+    });
+  });
+}
+
+function helperSpeak(text, voiceId) {
+  return new Promise((resolve, reject) => {
+    if (!helper.proc) { reject(new Error('speech helper not running')); return; }
+    const proc = helper.proc;
+    const timer = setTimeout(() => proc.kill(), 15_000);
+    helper.pending.push({ resolve, reject, timer });
+    proc.stdin.write(JSON.stringify({ id: helper.nextId++, text, voice: voiceId || '' }) + '\n');
+  });
+}
+
+// Several installed voices share a name (US and UK variants, Enhanced and
+// Premium downloads), so the list shown to the UI gets unique labels.
+function helperVoices(raw) {
+  const quality = { 2: 'Enhanced', 3: 'Premium' };
+  const labelled = raw.map((v) => ({ id: v.id, lang: v.lang.replace('-', '_'), name: quality[v.quality] ? `${v.name} (${quality[v.quality]})` : v.name }));
+  return labelled
+    .map((v) => (labelled.filter((x) => x.name === v.name).length > 1 ? { ...v, name: `${v.name} · ${v.lang}` } : v))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function pcmToWav(pcm, rate) {
+  const h = Buffer.alloc(44);
+  h.write('RIFF', 0); h.writeUInt32LE(36 + pcm.length, 4); h.write('WAVE', 8);
+  h.write('fmt ', 12); h.writeUInt32LE(16, 16); h.writeUInt16LE(1, 20); h.writeUInt16LE(1, 22);
+  h.writeUInt32LE(rate, 24); h.writeUInt32LE(rate * 2, 28); h.writeUInt16LE(2, 32); h.writeUInt16LE(16, 34);
+  h.write('data', 36); h.writeUInt32LE(pcm.length, 40);
+  return Buffer.concat([h, pcm]);
+}
 
 async function initTts() {
+  if (tts.engine === 'helper') {
+    const voices = (await exists(CONFIG.speechHelperBin)) ? await startHelper() : null;
+    if (voices) {
+      tts.voices = helperVoices(voices);
+      tts.available = true;
+      // The first sentence after launch costs about half a second; pay it now.
+      helperSpeak('Ready.', tts.voices.find((v) => v.name === CONFIG.sayVoice)?.id).catch(() => {});
+      return;
+    }
+    tts.engine = 'say';
+    tts.note = 'speech helper not built — using say (slower); run npm run setup';
+  }
   if (tts.engine === 'say') {
     tts.path = await which('say');
     tts.available = !!tts.path;
@@ -215,6 +321,11 @@ async function synthesize(text, voice) {
   const clean = speakable(text).slice(0, 1200);
   if (!clean) return null;
   if (!tts.available) throw new Error(`text-to-speech unavailable: ${tts.lastError || tts.engine}`);
+  if (tts.engine === 'helper') {
+    const v = voice || CONFIG.sayVoice;
+    const out = await helperSpeak(clean, tts.voices.find((x) => x.name === v)?.id);
+    return { wav: pcmToWav(out.pcm, out.sampleRate), ms: out.ms };
+  }
   return withTmp(async (dir) => {
     const out = path.join(dir, 'out.wav');
     let res;
@@ -428,7 +539,7 @@ const server = http.createServer(async (req, res) => {
         ollama: await ollamaStatus(),
         warmup: { state: warm.state, ms: warm.ms, error: warm.error },
         stt: { mode: stt.mode, ready: stt.mode === 'cli' || (stt.mode === 'server' && stt.serverReady), model: path.basename(CONFIG.whisperModel), error: stt.mode === 'none' ? stt.lastError : null },
-        tts: { engine: tts.engine, available: tts.available, error: tts.available ? null : tts.lastError, defaultVoice: tts.voices.some((v) => v.name === CONFIG.sayVoice) ? CONFIG.sayVoice : null },
+        tts: { engine: tts.engine, available: tts.available, error: tts.available ? null : tts.lastError, note: tts.note, defaultVoice: tts.voices.some((v) => v.name === CONFIG.sayVoice) ? CONFIG.sayVoice : null },
         server: { host: '127.0.0.1', port: CONFIG.port, pid: process.pid, rssBytes: process.memoryUsage().rss },
       });
     }
@@ -468,6 +579,6 @@ server.listen(CONFIG.port, '127.0.0.1', async () => {
   if (o.reachable && o.modelInstalled) startWarmup().then((w) => console.log(w ? `  model warmed in ${w.loadMs.toFixed(0)} ms\n` : `  model warm-up failed: ${warm.error}\n`));
 });
 
-const shutdown = () => { stt.serverProc?.kill(); process.exit(0); };
+const shutdown = () => { stopping = true; stt.serverProc?.kill(); helper.proc?.kill(); process.exit(0); };
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);

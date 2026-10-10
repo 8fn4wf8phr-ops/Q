@@ -5,7 +5,7 @@
   "historyTurns": 8,
   "whisperModel": "models/ggml-base.en.bin",
   "whisperThreads": 4,
-  "tts": "say",
+  "tts": "helper",
   "sayVoice": "Samantha",
   "sayRate": 0,
   "piperBin": "piper",

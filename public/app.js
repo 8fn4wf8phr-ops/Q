@@ -148,6 +148,8 @@ function row(label, value, state, sub) {
   return `<div class="srow"><span class="slabel">${label}</span><span class="sval">${value}${sub ? `<small>${sub}</small>` : ''}</span><span class="badge" data-kind="${state.kind}">${state.text}</span></div>`;
 }
 
+const SERVER_ENGINES = { helper: 'macOS voice, kept loaded', say: 'macOS say' };
+
 function renderStatus() {
   const s = S.status;
   if (!s) {
@@ -164,7 +166,7 @@ function renderStatus() {
   const voice = canSpeak() ? { kind: 'ok', text: 'Ready' } : { kind: 'warn', text: 'Missing' };
   const voiceRow = S.engine === 'browser'
     ? row('Voice', 'Browser speech', voice, speaker.available ? `${speaker.pick().name} · local voice` : 'no local voice in this browser')
-    : row('Voice', s.tts.engine === 'say' ? 'macOS say' : s.tts.engine, voice, s.tts.available ? (S.voice || s.tts.defaultVoice || 'system default voice') : s.tts.error);
+    : row('Voice', SERVER_ENGINES[s.tts.engine] || s.tts.engine, voice, s.tts.available ? [S.voice || s.tts.defaultVoice || 'system default voice', s.tts.note].filter(Boolean).join(' · ') : s.tts.error);
   els.status.innerHTML = [
     row('Brain', s.model, brain, meta || (o.reachable ? '' : 'start the Ollama app')),
     row('Ears', `whisper.cpp`, ears, s.stt.ready ? `${s.stt.model.replace(/^ggml-|\.bin$/g, '')} · ${s.stt.mode === 'server' ? 'kept loaded' : 'reloads each turn'}` : s.stt.error),
@@ -202,7 +204,9 @@ async function loadVoices() {
       : 'This browser reports no local English voice, so Q stays silent in this mode.';
     return;
   }
-  els.engineNote.textContent = 'Each sentence is rendered by macOS say on the server, then played here. The core follows the audio’s loudness.';
+  els.engineNote.textContent = S.status?.tts?.engine === 'helper'
+    ? 'Each sentence is rendered by Q’s speech helper, which stays loaded, then played here. The core follows the audio’s loudness.'
+    : `Each sentence is rendered by a new macOS say process, then played here. ${S.status?.tts?.note ? 'The faster speech helper isn’t running. ' : ''}The core follows the audio’s loudness.`;
   try {
     const { voices } = await (await fetch('/api/voices')).json();
     const def = S.status?.tts?.defaultVoice;
@@ -380,7 +384,7 @@ function finishTurn() {
     turn.recorded = true;
     const v2v = turn.tFirstAudio != null ? turn.tFirstAudio - turn.t0 : null;
     if (v2v != null) {
-      S.runs = [...S.runs, { v2v, source: turn.source, engine: S.engine, at: Date.now() }].slice(-12);
+      S.runs = [...S.runs, { v2v, source: turn.source, engine: S.engine === 'browser' ? 'browser' : (S.status?.tts?.engine ?? 'say'), at: Date.now() }].slice(-12);
       store.set('runs', S.runs);
     }
     renderLatency();
@@ -561,6 +565,7 @@ els.engine.addEventListener('change', () => {
   interrupt();
   S.engine = els.engine.value;
   store.set('engine', S.engine);
+  renderStatus();
   loadVoices().then(renderStatus);
 });
 speaker.voiceName = S.browserVoice;

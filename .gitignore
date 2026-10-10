@@ -1,4 +1,5 @@
 node_modules/
 models/
+bin/
 q.config.json
 .DS_Store
