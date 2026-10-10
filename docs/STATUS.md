@@ -3,7 +3,7 @@
 _Claude Code updates this after every change. Labels: **proposed → approved → built → tested (stand-ins) → verified (real Mac)**. Only "verified" means it worked on Jacquez's Mac with real components._
 
 **Current version:** v0.1  
-**Last updated:** 2026-10-10 (Claude Code: added `docs/CHECKLIST.md`)  
+**Last updated:** 2026-10-10 (Claude Code: Whisper vocabulary hint built; speech-helper bug that dropped queued sentences found and fixed; silence guard still uncalibrated; all uncommitted)  
 **What's left for v0.1:** see [CHECKLIST.md](CHECKLIST.md), which lists each item as built or not, checked against the code.
 
 ## v0.1 — what exists
@@ -27,6 +27,10 @@ _Claude Code updates this after every change. Labels: **proposed → approved �
 | `say` sentences are now synthesized one at a time instead of in parallel | tested (stand-ins): one typed turn; **effect on real latency not measured** |
 | Stable prompt prefix: the system prompt no longer changes; each user message carries a fixed timestamp from when it was created; history is capped at 8 turns or 6000 characters and old turns are dropped 4 at a time (D-006, D-022) | benchmarked on the real Mac against real Ollama through `/api/chat` 2026-10-10 (see Measurements); **not yet run in a real voice turn** |
 | "Prompt processing" row in the latency panel (time and prompt size) | built; **not yet seen in a browser** |
+| Silence guard: each recording is measured in 20 ms frames (`public/level.js`); if less than 120 ms of it is louder than -50 dBFS, Whisper is skipped and Q says it didn't hear anything, with the measured level. Voice turns show an "Input level" row (D-012) | tested (stand-ins): `npm test` (16 cases, including real synthesized speech turned down 20 and 30 dB) and the decode-and-measure path in Claude's built-in Chromium; **never run with the real microphone; threshold is a starting guess** |
+| Whisper vocabulary hint (`whisperPrompt` in the config): a short line of expected words ("Hey Q", "Yo Q", "VS Code", "Ollama", "GitHub") sent with every transcription (D-023) | tested on the real Whisper (`base.en`) with synthesized speech, 2026-10-10 (see Measurements); **not yet tried with Jacquez's voice** |
+| Speech helper fix: a late "finished" signal from one sentence no longer ends the next one with no audio | tested on this Mac 2026-10-10: 40 of 40 runs of 6 queued sentences and 120 of 120 sequential sentences at full length (the old helper lost sentences in 10 of 12 queued runs); **needs a server restart to take effect** |
+| `npm test` runs `scripts/test-level.mjs`, the repo's first test | run on this Mac 2026-10-10: all cases pass |
 | `Start Q.command`: double-click launcher. Opens the page if Q is already running; otherwise checks Ollama (opens the app and waits up to a minute), runs `npm start` in a Terminal window and opens the page when the server answers. No auto-start at login | tested from a shell on this Mac with a stand-in for the browser `open`: already-running, cold start through a symlink, second launch, busy port, Ollama not running; **double-click from Finder confirmed working by Jacquez 2026-10-10** |
 | Closing the Terminal window (SIGHUP) now shuts Q down cleanly, including `whisper-server` and the speech helper | tested by sending SIGHUP to a test instance: no stray processes left |
 | `scripts/bench-cache.mjs`: prompt-cache benchmark through `/api/chat` (back-to-back vs `--gap 61`, `--turns`, `--save`/`--load` for restart tests), timings only | run on the real Mac against real Ollama 2026-10-10 (see Measurements) |
@@ -34,8 +38,14 @@ _Claude Code updates this after every change. Labels: **proposed → approved �
 ## Known issues — fix before benchmarking
 1. **(Fix built 2026-10-10, see Measurements.)** **Timestamp breaks Ollama's prompt cache.** `server.js` puts the current time, to the minute, into the system prompt, so the persona and history are reprocessed after every minute change and latency comes out inflated. Use the date or hour, or put the time in the latest message. _(found by Claude Chat; not yet fixed)_
 2. **Instrumentation gaps for the v0.1 gate:** no p90, no swap or memory-pressure sampling (must come from the server), no cold vs warm split, no "Copy run data" export. The metric should be labeled "key release → first audio". The export must contain timings only, no transcripts or audio.
-3. **Whisper hallucinations on near-silent clips** (e.g. "Thank you."): only a 300 ms minimum exists; add a loudness check.
+3. **Whisper hallucinations on near-silent clips** (e.g. "Thank you."): only a 300 ms minimum exists; add a loudness check. _(silence guard built 2026-10-10; needs calibrating on the real mic)_
+   - The -50 dBFS threshold has not been checked against Jacquez's microphone, which runs with automatic gain control. To calibrate: a few silent holds and a few quiet sentences, then read the levels Q reports.
+   - Synthesized speech turned down 40 dB (loudest frame about -52 dB) is rejected; that is the current lower limit for quiet speech.
+   - Steady loud noise still reaches Whisper. The guard catches silence, not noise.
+   - The last 100 ms of each recording is ignored so the key-release click doesn't count as sound.
 4. **Push-to-talk only works while the browser tab is focused** (expected until v0.3).
+17. **Quiet speech can be misheard** (reported by Jacquez 2026-10-10). Tests with synthesized speech point at three causes, not volume alone: background noise close to the voice level, unusual words ("Q", "Ollama"), and a clipped start. The vocabulary hint addresses the second. Still open: the first words can be clipped because the mic is opened fresh on every press, and "Hey Q" spoken quietly still came out as "Thank you." in 2 of 4 conditions.
+18. **The speech helper as first pushed (`b69cbcb` to `582ae00`) could drop sentences.** When a request reached it within a few milliseconds of the previous reply, the next sentence came back empty: 45 of 60 at a 0 ms gap, 0 of 60 at 5 ms or more. How often Q's page hit that window in real use is not known. Fixed 2026-10-10.
 9. **The first turn after a few idle minutes can be slow even though the model is "Loaded".** A 349-token prompt that normally takes about 0.2 s took 4.5 s after roughly six idle minutes, with 8–9 GB of swap in use. Measured 2026-10-10 (see Measurements): after 4 idle minutes macOS had compressed the model's memory and the next request decompressed about 2.7 GB, roughly the whole model. No fix built; options are fewer open apps, a keep-warm ping, or labelling the turn. This, not the cache, may explain some of the 11–12 s first tokens. Related to D-014 and the `keepAlive` open question.
 10. **Trimming still costs about 1.1–1.2 s on one turn in four** once a conversation passes 8 turns (was 1.6–1.9 s on every turn).
 11. **Timestamps on messages cost about 0.1 s per turn** (more tokens in each new message: prompt time on a cache hit went from about 0.16 s to 0.26 s).
@@ -184,5 +194,17 @@ One run of a model that varies every time: these are observations, not rates.
 
 - The prompt was identical every time, so none of this is prompt-cache cost. Disk swap-ins stayed at 0–2 MB; the work was decompression.
 - One run, one sample per gap. It shows the mechanism but did not reproduce the 4.5–7.8 s seen earlier after longer idle spells; those may involve pages that had gone to disk, which this run did not capture.
+
+### 2026-10-10 — Whisper vocabulary hint (real `base.en` through `/api/transcribe`; 10 synthesized sentences × 4 conditions: normal, 30 dB quieter, 30 dB quieter with noise 10 dB below the voice, 38 dB quieter)
+| | Exact transcripts (ignoring case and punctuation) |
+|---|---|
+| Without the hint | 23 of 40 |
+| With the hint | 33 of 40 |
+
+- Every change was a wrong transcript becoming right; none went the other way. Fixed: "Yo Q" (was "Yo-kyo", "You're cute"), "Ollama" (was "Olima"), "VS Code", "GitHub", and one quiet "Hey Q".
+- Still wrong with the hint: quiet "Hey Q, are you there?" → "Thank you. Are you there?" in 2 conditions, and 5 noisy-room transcripts of ordinary sentences.
+- Silence and noise clips returned nothing with or without the hint, so the hint did not leak into empty audio.
+- Caveats: a synthetic voice, not Jacquez's; and two of the test sentences use phrases that are in the hint itself, which flatters the result.
+- Volume alone was not the problem: ordinary sentences were transcribed correctly 38 dB quieter in a quiet room. Cutting the first 0.3 s off a clip lost the opening words every time and once produced a phantom "Thank you."
 
 None of the speech-engine tables above are end-to-end numbers from Jacquez's browser. The cache benchmark (`scripts/bench-cache.mjs`) has not been run against real Ollama yet.

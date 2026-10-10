@@ -29,6 +29,9 @@ const DEFAULTS = {
   whisperCliBin: 'whisper-cli',
   whisperModel: 'models/ggml-base.en.bin',
   whisperThreads: 4,
+  // Words Whisper should expect, written as ordinary speech. It only nudges
+  // spelling of names and jargon; set to '' to turn it off.
+  whisperPrompt: 'Hey Q. Yo Q, what\'s good? Q, open VS Code. Ollama, Whisper, MacBook Air, GitHub.',
   whisperPort: 4142,
   tts: 'helper', // 'helper' (falls back to 'say' if not built) | 'say' | 'piper' | 'none'
   speechHelperBin: 'bin/q-speak',
@@ -165,6 +168,7 @@ async function transcribe(wav) {
     form.append('file', new Blob([wav], { type: 'audio/wav' }), 'speech.wav');
     form.append('response_format', 'json');
     form.append('temperature', '0');
+    if (CONFIG.whisperPrompt) form.append('prompt', CONFIG.whisperPrompt);
     const r = await fetch(`http://127.0.0.1:${CONFIG.whisperPort}/inference`, { method: 'POST', body: form });
     if (!r.ok) throw new Error(`whisper-server HTTP ${r.status}`);
     const data = await r.json();
@@ -174,9 +178,9 @@ async function transcribe(wav) {
     return withTmp(async (dir) => {
       const file = path.join(dir, 'speech.wav');
       await writeFile(file, wav);
-      const res = await run(stt.cliPath, [
-        '-m', CONFIG.whisperModel, '-f', file, '-l', 'en', '-nt', '-np', '-t', String(CONFIG.whisperThreads),
-      ]);
+      const args = ['-m', CONFIG.whisperModel, '-f', file, '-l', 'en', '-nt', '-np', '-t', String(CONFIG.whisperThreads)];
+      if (CONFIG.whisperPrompt) args.push('--prompt', CONFIG.whisperPrompt);
+      const res = await run(stt.cliPath, args);
       if (!res.ok) throw new Error(`whisper-cli failed: ${res.stderr.slice(-300)}`);
       return { text: cleanTranscript(res.stdout), ms: res.ms, mode: 'cli' };
     });
