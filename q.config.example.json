@@ -3,6 +3,7 @@
   "keepAlive": "30m",
   "temperature": 0.8,
   "historyTurns": 8,
+  "historyChars": 6000,
   "whisperModel": "models/ggml-base.en.bin",
   "whisperThreads": 4,
   "tts": "helper",

@@ -309,7 +309,7 @@ function newTurn(source) {
 
 async function runTurn(text) {
   const t = turn;
-  S.messages.push({ role: 'user', content: text });
+  S.messages.push({ role: 'user', content: text, at: Date.now() });
   t.userPushed = true;
   addBubble('user', text, t.source === 'voice' ? `heard · ${(t.sttMs / 1000).toFixed(2)} s` : '');
   const bubble = addBubble('q');
@@ -500,6 +500,7 @@ function renderLatency() {
   els.breakdown.innerHTML = segs.map((s) => `<span class="seg ${s.key}" style="flex:${s.ms ? Math.max(s.ms / total, 0.02) : 0}" title="${s.label}: ${fmtS(s.ms)}"></span>`).join('');
   const st = t.stats;
   els.latRows.innerHTML = segs.map((s) => `<div class="lrow"><span class="key ${s.key}"></span><span>${s.label}</span><b>${fmtS(s.ms)}</b></div>`).join('')
+    + `<div class="lrow plain"><span></span><span>Prompt processing</span><b>${st ? `${fmtS(st.promptMs)} · ${st.promptTokens} tokens` : '—'}</b></div>`
     + `<div class="lrow plain"><span></span><span>Generation speed</span><b>${st?.tokPerSec ? `${st.tokPerSec.toFixed(1)} tok/s` : '—'}</b></div>`
     + `<div class="lrow plain"><span></span><span>Model load this turn</span><b>${st ? (coldMs(st) ? `${(coldMs(st) / 1000).toFixed(1)} s (cold${st.warmupWaitMs ? ', waited on warm-up' : ''})` : 'warm') : '—'}</b></div>`
     + (t.source === 'voice' ? `<div class="lrow plain"><span></span><span>You spoke for</span><b>${fmtS(t.captureMs)}</b></div>` : '');

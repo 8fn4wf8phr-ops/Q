@@ -3,9 +3,13 @@
 // how long Ollama spent on the prompt each turn. Run it twice per commit:
 //   node scripts/bench-cache.mjs            back-to-back turns
 //   node scripts/bench-cache.mjs --gap 61   every turn lands in a new minute
+//   --turns 14        go past the history cap (default 6)
+//   --save f.json     keep the conversation so a later run can continue it
+//   --load f.json     continue a saved conversation, e.g. right after a restart
 // If the minute-changing timestamp defeats the prompt cache, the --gap run
 // shows higher prompt ms on turns 2+ than the back-to-back run.
-// Prints timings and token counts only — never the replies.
+// Prints timings and token counts only — never the replies. A --save file
+// does contain the replies; keep it out of the repo.
 
 const args = process.argv.slice(2);
 const opt = (name, fallback) => {
@@ -16,6 +20,8 @@ const URL_BASE = opt('url', 'http://127.0.0.1:4141');
 const GAP_S = Number(opt('gap', 0));
 const TURNS = Number(opt('turns', 6));
 const AS_JSON = args.includes('--json');
+const SAVE = opt('save', null);
+const LOAD = opt('load', null);
 
 const PROMPTS = [
   'Give me one tip for staying focused while coding.',
@@ -26,7 +32,15 @@ const PROMPTS = [
   'Sum up everything you told me in one sentence.',
   'Which of those matters most?',
   'What is the first thing I should try tomorrow?',
+  'What if I forget?',
+  'Does music help or hurt?',
+  'What about coffee?',
+  'How do I know it is working?',
+  'What is a common mistake people make with this?',
+  'Give me a two-word name for this whole routine.',
 ];
+
+import { readFile, writeFile } from 'node:fs/promises';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const minuteOf = (d) => Math.floor(d.getTime() / 60_000);
@@ -70,8 +84,9 @@ if (!status.ollama?.reachable || !status.ollama.modelInstalled) {
   process.exit(1);
 }
 
-const turns = Math.min(TURNS, PROMPTS.length);
-const messages = [];
+const messages = LOAD ? JSON.parse(await readFile(LOAD, 'utf8')) : [];
+const done = messages.filter((m) => m.role === 'user').length;
+const turns = Math.min(TURNS, PROMPTS.length - done);
 const rows = [];
 let lastMinute = null;
 if (!AS_JSON) console.log(`\n  ${status.model} · ${turns} turns · gap ${GAP_S} s · ${new Date().toISOString()}\n`);
@@ -79,11 +94,11 @@ if (!AS_JSON) console.log(`\n  ${status.model} · ${turns} turns · gap ${GAP_S}
 for (let i = 0; i < turns; i++) {
   if (i > 0 && GAP_S > 0) await sleep(GAP_S * 1000);
   const minute = minuteOf(new Date());
-  messages.push({ role: 'user', content: PROMPTS[i] });
+  messages.push({ role: 'user', content: PROMPTS[done + i], at: Date.now() });
   const { reply, stats, firstTokenMs } = await chat(messages);
   messages.push({ role: 'assistant', content: reply });
   rows.push({
-    turn: i + 1,
+    turn: done + i + 1,
     newMinute: lastMinute != null && minute !== lastMinute,
     promptTokens: stats.promptTokens,
     promptMs: Math.round(stats.promptMs),
@@ -93,8 +108,9 @@ for (let i = 0; i < turns; i++) {
     tokPerSec: stats.tokPerSec ? Number(stats.tokPerSec.toFixed(1)) : null,
   });
   lastMinute = minute;
-  if (!AS_JSON) console.log(`  turn ${i + 1} done`);
+  if (!AS_JSON) console.log(`  turn ${done + i + 1} done`);
 }
+if (SAVE) await writeFile(SAVE, JSON.stringify(messages));
 
 const later = rows.slice(1).map((r) => r.promptMs).sort((a, b) => a - b);
 const mid = later.length >> 1;

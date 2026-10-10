@@ -24,6 +24,7 @@ const DEFAULTS = {
   numCtx: 4096,
   temperature: 0.8,
   historyTurns: 8,
+  historyChars: 6000,
   whisperServerBin: 'whisper-server',
   whisperCliBin: 'whisper-cli',
   whisperModel: 'models/ggml-base.en.bin',
@@ -405,14 +406,40 @@ async function persona() {
   catch { return 'You are Q, a helpful local assistant. Keep spoken replies short.'; }
 }
 
+// Ollama reuses its work on a prompt only up to the first token that differs
+// from the previous request, so everything sent before the newest message has
+// to stay byte-for-byte the same from turn to turn. Two rules follow:
+//  - the system prompt never changes; the time rides on each user message,
+//    fixed at the moment that message was created;
+//  - old turns are dropped a block at a time, so the start of the history
+//    moves once every few turns instead of on every turn.
+const TIME_NOTE = 'Each of his messages starts with the time it was sent, in square brackets. That is how you know the current date and time. Never read the brackets out or repeat a timestamp back; only use it when the time or date matters.';
+const STAMP = { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' };
+
+function stamped(m) {
+  if (m.role !== 'user' || !Number.isFinite(m.at)) return m.content;
+  const d = new Date(m.at);
+  return Number.isNaN(d.getTime()) ? m.content : `[${d.toLocaleString('en-US', STAMP)}] ${m.content}`;
+}
+
+function trimHistory(msgs) {
+  const max = CONFIG.historyTurns * 2;
+  const block = Math.max(2, CONFIG.historyTurns);
+  const last = msgs.length - 1;
+  const chars = (from) => msgs.slice(from).reduce((n, m) => n + m.content.length, 0);
+  let start = 0;
+  while (start < last && (msgs.length - start > max || chars(start) > CONFIG.historyChars)) start += block;
+  start = Math.max(0, Math.min(start, last));
+  while (start < last && msgs[start].role !== 'user') start++;
+  return msgs.slice(start);
+}
+
 async function streamChat(req, res) {
   const body = JSON.parse((await readBody(req, 1_000_000)).toString('utf8') || '{}');
   const history = Array.isArray(body.messages) ? body.messages : [];
-  const trimmed = history
-    .filter((m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
-    .slice(-CONFIG.historyTurns * 2);
-  const now = new Date();
-  const system = `${await persona()}\n\nCurrent local date and time: ${now.toLocaleString('en-US', { dateStyle: 'full', timeStyle: 'short' })}.`;
+  const trimmed = trimHistory(history.filter((m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string'))
+    .map((m) => ({ role: m.role, content: stamped(m) }));
+  const system = `${await persona()}\n\n${TIME_NOTE}`;
 
   const controller = new AbortController();
   res.on('close', () => { if (!res.writableEnded) controller.abort(); });
