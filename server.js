@@ -267,11 +267,26 @@ async function warmModel() {
   const r = await fetch(`${CONFIG.ollamaUrl}/api/generate`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ model: CONFIG.model, prompt: '', keep_alive: CONFIG.keepAlive }),
+    body: JSON.stringify({ model: CONFIG.model, prompt: '', keep_alive: CONFIG.keepAlive, options: { num_ctx: CONFIG.numCtx } }),
   });
   if (!r.ok) throw new Error(`warmup HTTP ${r.status}`);
   const data = await r.json();
   return { loadMs: (data.load_duration || 0) / 1e6 };
+}
+
+// Warm-up state, reported in /api/status so the UI never shows "Ready" while
+// the model is still loading. Never rejects: a failed warm-up resolves null.
+const warm = { state: 'idle', promise: null, ms: null, error: null };
+
+function startWarmup() {
+  const started = performance.now();
+  warm.state = 'warming';
+  warm.ms = null;
+  warm.error = null;
+  warm.promise = warmModel()
+    .then((w) => { warm.state = 'ready'; warm.ms = performance.now() - started; return w; })
+    .catch((err) => { warm.state = 'failed'; warm.ms = performance.now() - started; warm.error = err.message; return null; });
+  return warm.promise;
 }
 
 async function persona() {
@@ -292,6 +307,16 @@ async function streamChat(req, res) {
   res.on('close', () => { if (!res.writableEnded) controller.abort(); });
   res.writeHead(200, { 'content-type': 'application/x-ndjson', 'cache-control': 'no-store' });
   const send = (obj) => res.write(JSON.stringify(obj) + '\n');
+
+  // A turn that arrives during the warm-up waits for it here, so the wait is
+  // measured instead of hiding inside Ollama's queue.
+  let warmupWaitMs = 0;
+  if (warm.state === 'warming') {
+    const waitStarted = performance.now();
+    await warm.promise;
+    warmupWaitMs = performance.now() - waitStarted;
+    if (controller.signal.aborted) return res.end();
+  }
 
   const started = performance.now();
   let firstTokenMs = null;
@@ -334,6 +359,7 @@ async function streamChat(req, res) {
               serverFirstTokenMs: firstTokenMs,
               totalMs: performance.now() - started,
               loadMs: (msg.load_duration || 0) / 1e6,
+              warmupWaitMs,
               promptTokens: msg.prompt_eval_count || 0,
               promptMs: (msg.prompt_eval_duration || 0) / 1e6,
               evalTokens: msg.eval_count || 0,
@@ -400,13 +426,18 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, {
         model: CONFIG.model,
         ollama: await ollamaStatus(),
+        warmup: { state: warm.state, ms: warm.ms, error: warm.error },
         stt: { mode: stt.mode, ready: stt.mode === 'cli' || (stt.mode === 'server' && stt.serverReady), model: path.basename(CONFIG.whisperModel), error: stt.mode === 'none' ? stt.lastError : null },
         tts: { engine: tts.engine, available: tts.available, error: tts.available ? null : tts.lastError, defaultVoice: CONFIG.sayVoice || null },
         server: { host: '127.0.0.1', port: CONFIG.port, pid: process.pid, rssBytes: process.memoryUsage().rss },
       });
     }
     if (req.method === 'GET' && pathname === '/api/voices') return json(res, 200, { engine: tts.engine, voices: tts.voices });
-    if (req.method === 'POST' && pathname === '/api/warm') return json(res, 200, await warmModel());
+    if (req.method === 'POST' && pathname === '/api/warm') {
+      const w = await (warm.state === 'warming' ? warm.promise : startWarmup());
+      if (!w) throw new Error(warm.error || 'warm-up failed');
+      return json(res, 200, w);
+    }
     if (req.method === 'POST' && pathname === '/api/transcribe') {
       const wav = await readBody(req, 25_000_000);
       return json(res, 200, await transcribe(wav));
@@ -434,7 +465,7 @@ server.listen(CONFIG.port, '127.0.0.1', async () => {
   console.log(`  model    ${CONFIG.model}  ${o.reachable ? (o.modelInstalled ? '✓ installed' : '✗ not pulled — run: ollama pull ' + CONFIG.model) : '✗ Ollama not running'}`);
   console.log(`  speech   whisper.cpp (${stt.mode})${stt.mode === 'none' ? '  ✗ ' + stt.lastError : '  ✓'}`);
   console.log(`  voice    ${tts.engine}${tts.available ? '  ✓' : '  ✗ ' + tts.lastError}\n`);
-  if (o.reachable && o.modelInstalled) warmModel().then((w) => console.log(`  model warmed in ${w.loadMs.toFixed(0)} ms\n`)).catch(() => {});
+  if (o.reachable && o.modelInstalled) startWarmup().then((w) => console.log(w ? `  model warmed in ${w.loadMs.toFixed(0)} ms\n` : `  model warm-up failed: ${warm.error}\n`));
 });
 
 const shutdown = () => { stt.serverProc?.kill(); process.exit(0); };

@@ -67,6 +67,7 @@ let turn = null;
 const PHASES = {
   boot:         { core: 'boot',      label: 'Starting',      pill: '' },
   offline:      { core: 'offline',   label: 'Not ready',     pill: 'warn' },
+  warming:      { core: 'boot',      label: 'Warming up',    pill: 'busy' },
   idle:         { core: 'idle',      label: 'Ready',         pill: 'ok' },
   arming:       { core: 'idle',      label: 'Opening mic',   pill: '' },
   listening:    { core: 'listening', label: 'Listening',     pill: 'live' },
@@ -91,6 +92,7 @@ function setPhase(phase, detail) {
 
 function defaultDetail(phase) {
   switch (phase) {
+    case 'warming': return `Loading ${S.status?.model ?? 'the model'} into memory — the first reply will be slow`;
     case 'idle': return 'Hold Space or the mic to talk';
     case 'arming': return 'Waiting for microphone access';
     case 'listening': return 'Release to send';
@@ -106,9 +108,12 @@ function ready() {
   return !!(o?.reachable && o.modelInstalled);
 }
 
+const warming = () => S.status?.warmup?.state === 'warming';
+
 function settle() {
-  if (ready()) setPhase('idle');
-  else setPhase('offline', offlineReason());
+  if (!ready()) setPhase('offline', offlineReason());
+  else if (warming()) setPhase('warming');
+  else setPhase('idle');
 }
 
 function offlineReason() {
@@ -140,6 +145,7 @@ function renderStatus() {
   const o = s.ollama;
   const brain = !o.reachable ? { kind: 'err', text: 'No Ollama' }
     : !o.modelInstalled ? { kind: 'warn', text: 'Not pulled' }
+    : warming() ? { kind: 'idle', text: 'Loading' }
     : o.modelLoaded ? { kind: 'ok', text: 'Loaded' } : { kind: 'idle', text: 'Installed' };
   const meta = [o.parameterSize, o.quantization].filter(Boolean).join(' · ');
   const ears = s.stt.ready ? { kind: 'ok', text: s.stt.mode === 'server' ? 'Ready' : 'Ready (slow)' } : { kind: 'warn', text: 'Missing' };
@@ -153,7 +159,9 @@ function renderStatus() {
   ].join('');
 }
 
+let warmPoll = null;
 async function refreshStatus() {
+  clearTimeout(warmPoll);
   try {
     const r = await fetch('/api/status');
     S.status = await r.json();
@@ -161,7 +169,8 @@ async function refreshStatus() {
     S.status = null;
   }
   renderStatus();
-  if (['boot', 'offline', 'idle'].includes(S.phase)) settle();
+  if (['boot', 'offline', 'warming', 'idle'].includes(S.phase)) settle();
+  if (warming()) warmPoll = setTimeout(refreshStatus, 1000);
 }
 
 async function loadVoices() {
@@ -312,7 +321,7 @@ async function runTurn(text) {
     const st = t.stats;
     setBubble(bubble, full || '(no reply)', {
       streaming: false,
-      meta: st ? `${st.evalTokens} tokens · ${st.tokPerSec ? st.tokPerSec.toFixed(1) : '—'} tok/s${st.loadMs > 300 ? ` · cold start ${(st.loadMs / 1000).toFixed(1)} s` : ''}` : '',
+      meta: st ? `${st.evalTokens} tokens · ${st.tokPerSec ? st.tokPerSec.toFixed(1) : '—'} tok/s${coldMs(st) ? ` · cold start ${(coldMs(st) / 1000).toFixed(1)} s` : ''}` : '',
     });
     renderLatency();
     if (!player.playing) finishTurn();
@@ -416,6 +425,8 @@ async function pttUp() {
 // ---------- latency panel ----------
 
 const fmtS = (ms) => (ms == null ? '—' : `${(ms / 1000).toFixed(2)} s`);
+// Cold = the model was loaded for this turn, or the turn waited on the startup warm-up.
+const coldMs = (st) => (st.loadMs > 300 ? st.loadMs : 0) + (st.warmupWaitMs || 0);
 function verdict(ms) {
   if (ms == null) return { kind: 'idle', text: 'No data yet' };
   if (ms < 1500) return { kind: 'ok', text: 'Feels live' };
@@ -447,7 +458,7 @@ function renderLatency() {
   const st = t.stats;
   els.latRows.innerHTML = segs.map((s) => `<div class="lrow"><span class="key ${s.key}"></span><span>${s.label}</span><b>${fmtS(s.ms)}</b></div>`).join('')
     + `<div class="lrow plain"><span></span><span>Generation speed</span><b>${st?.tokPerSec ? `${st.tokPerSec.toFixed(1)} tok/s` : '—'}</b></div>`
-    + `<div class="lrow plain"><span></span><span>Model load this turn</span><b>${st ? (st.loadMs > 300 ? `${(st.loadMs / 1000).toFixed(1)} s (cold)` : 'warm') : '—'}</b></div>`
+    + `<div class="lrow plain"><span></span><span>Model load this turn</span><b>${st ? (coldMs(st) ? `${(coldMs(st) / 1000).toFixed(1)} s (cold${st.warmupWaitMs ? ', waited on warm-up' : ''})` : 'warm') : '—'}</b></div>`
     + (t.source === 'voice' ? `<div class="lrow plain"><span></span><span>You spoke for</span><b>${fmtS(t.captureMs)}</b></div>` : '');
 }
 

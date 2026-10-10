@@ -3,7 +3,7 @@
 _Claude Code updates this after every change. Labels: **proposed → approved → built → tested (stand-ins) → verified (real Mac)**. Only "verified" means it worked on Jacquez's Mac with real components._
 
 **Current version:** v0.1  
-**Last updated:** 2026-10-10 (Claude Code: recorded Jacquez's first real-Mac results and added the cache benchmark script; no runtime code changed since baseline `b6337bd`)
+**Last updated:** 2026-10-10 (Claude Code: recorded Jacquez's first real-Mac results; warm-up state built)
 
 ## v0.1 — what exists
 | Feature | State |
@@ -18,6 +18,7 @@ _Claude Code updates this after every change. Labels: **proposed → approved �
 | `persona.md` re-read every turn; last 8 turns of context | tested (stand-ins) |
 | `npm run setup` (whisper-cpp, base.en model, llama3.2:3b) | run by Jacquez (Ollama 0.40.2 and whisper.cpp present 2026-10-10) |
 | Whole pipeline on the real Mac | first runs 2026-10-10; test conditions (browser, VS Code load, power) not recorded |
+| "Warming up" state until the startup model load finishes; a turn that waits on it is timed (`warmupWaitMs`) and labelled cold; warm-up now loads with the same `num_ctx` as chat (D-020) | tested (stand-ins): fake Ollama with a slow and a failing load, checked through the API and in a browser; **not yet run on the real pipeline** |
 | `scripts/bench-cache.mjs`: prompt-cache benchmark through `/api/chat` (back-to-back vs `--gap 61`), timings only | tested (stand-ins): ran against a fake Ollama stub; **not run** against real Ollama |
 
 ## Known issues — fix before benchmarking
@@ -27,7 +28,8 @@ _Claude Code updates this after every change. Labels: **proposed → approved �
 4. **Push-to-talk only works while the browser tab is focused** (expected until v0.3).
 5. **Voice synthesis is the main bottleneck.** Each sentence spawns a new `say` process, which costs 1.3–4 s before any audio exists, regardless of sentence length. _(measured 2026-10-10; not yet fixed)_
 6. **The system default voice is much slower than Samantha** (about 4–7 s vs 1.3–2.4 s per sentence). Q has no default voice set. _(not yet fixed)_
-7. **Truthfulness bug: "Ready" is shown while the startup warm-up is still running.** The first question waits for it (first token 11.5 s observed) and the panel labels that turn "warm" because it only reads the chat request's own load time. _(found by Jacquez 2026-10-10; not yet fixed)_
+7. **Truthfulness bug: "Ready" is shown while the startup warm-up is still running.** The first question waits for it (first token 11.5 s observed) and the panel labels that turn "warm" because it only reads the chat request's own load time. _(found by Jacquez 2026-10-10; fix built, needs a real-Mac check: restart, ask at once, expect "Warming up" then a cold-labelled turn)_
+   - Not covered: if Ollama unloads the model later (after `keepAlive`), Q still shows "Ready"; that turn is labelled cold from its own load time, and the Brain badge says "Installed" instead of "Loaded".
 8. **History is resent in full after a server restart** if the browser tab still holds the conversation, so the first turn reprocesses all of it with an empty cache. How much of the 11.5 s this explains vs the warm-up wait is not yet separated.
 
 ### Found by Claude Code's read-only inspection (2026-10-09, not yet fixed, not yet confirmed by a run)
