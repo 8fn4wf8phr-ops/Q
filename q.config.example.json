@@ -6,7 +6,7 @@
   "whisperModel": "models/ggml-base.en.bin",
   "whisperThreads": 4,
   "tts": "say",
-  "sayVoice": "",
+  "sayVoice": "Samantha",
   "sayRate": 0,
   "piperBin": "piper",
   "piperModel": ""

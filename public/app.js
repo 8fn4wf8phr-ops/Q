@@ -153,7 +153,7 @@ function renderStatus() {
   els.status.innerHTML = [
     row('Brain', s.model, brain, meta || (o.reachable ? '' : 'start the Ollama app')),
     row('Ears', `whisper.cpp`, ears, s.stt.ready ? `${s.stt.model.replace(/^ggml-|\.bin$/g, '')} · ${s.stt.mode === 'server' ? 'kept loaded' : 'reloads each turn'}` : s.stt.error),
-    row('Voice', s.tts.engine === 'say' ? 'macOS say' : s.tts.engine, voice, s.tts.available ? (S.voice || 'system default voice') : s.tts.error),
+    row('Voice', s.tts.engine === 'say' ? 'macOS say' : s.tts.engine, voice, s.tts.available ? (S.voice || s.tts.defaultVoice || 'system default voice') : s.tts.error),
     row('Model memory', fmtBytes(o.loadedVramBytes), { kind: 'idle', text: o.modelLoaded ? 'Measured' : 'Not loaded' }, 'reported by Ollama'),
     row('Q server', fmtBytes(s.server.rssBytes), { kind: 'idle', text: 'Measured' }, `process RSS · pid ${s.server.pid}`),
   ].join('');
@@ -176,7 +176,8 @@ async function refreshStatus() {
 async function loadVoices() {
   try {
     const { voices } = await (await fetch('/api/voices')).json();
-    const opts = ['<option value="">System default</option>']
+    const def = S.status?.tts?.defaultVoice;
+    const opts = [`<option value="">${def ? `Default (${escapeHtml(def)})` : 'System default'}</option>`]
       .concat(voices.map((v) => `<option value="${escapeAttr(v.name)}">${escapeHtml(v.name)} · ${v.lang}</option>`));
     els.voice.innerHTML = opts.join('');
     els.voice.value = voices.some((v) => v.name === S.voice) ? S.voice : '';

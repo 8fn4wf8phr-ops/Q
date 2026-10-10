@@ -29,7 +29,7 @@ const DEFAULTS = {
   whisperThreads: 4,
   whisperPort: 4142,
   tts: 'say', // 'say' | 'piper' | 'none'
-  sayVoice: '',
+  sayVoice: 'Samantha', // falls back to the system voice if not installed
   sayRate: 0,
   piperBin: 'piper',
   piperModel: '',
@@ -428,7 +428,7 @@ const server = http.createServer(async (req, res) => {
         ollama: await ollamaStatus(),
         warmup: { state: warm.state, ms: warm.ms, error: warm.error },
         stt: { mode: stt.mode, ready: stt.mode === 'cli' || (stt.mode === 'server' && stt.serverReady), model: path.basename(CONFIG.whisperModel), error: stt.mode === 'none' ? stt.lastError : null },
-        tts: { engine: tts.engine, available: tts.available, error: tts.available ? null : tts.lastError, defaultVoice: CONFIG.sayVoice || null },
+        tts: { engine: tts.engine, available: tts.available, error: tts.available ? null : tts.lastError, defaultVoice: tts.voices.some((v) => v.name === CONFIG.sayVoice) ? CONFIG.sayVoice : null },
         server: { host: '127.0.0.1', port: CONFIG.port, pid: process.pid, rssBytes: process.memoryUsage().rss },
       });
     }
