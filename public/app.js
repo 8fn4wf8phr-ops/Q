@@ -1,5 +1,5 @@
 import { QCore } from './core.js';
-import { Recorder, Player, BrowserSpeaker, blobToWav16k } from './audio.js';
+import { Recorder, Player, BrowserSpeaker, blobToWav16k, micName } from './audio.js';
 import { takeChunks } from './chunk.js';
 import { SCHEMA, MAX_RUNS, MIN_FOR_P90, IDLE_MS, kindOf, summarize, buildExport } from './stats.js';
 
@@ -151,6 +151,45 @@ function offlineReason() {
 
 // ---------- status ----------
 
+// ---------- microphone ----------
+// Which microphone Q is recording through. The browser picks it, and macOS can
+// switch it without asking (an iPhone nearby becomes a Continuity microphone),
+// so Q shows the device it actually opened and says when that changes.
+
+const mic = { name: null, source: null, changed: false };
+const WIRELESS = /iphone|ipad|airpods|bluetooth|hands-free|headset/i;
+
+function setMic(name, source) {
+  if (!name) return;
+  if (mic.name && name !== mic.name) {
+    mic.changed = true;
+    systemNote(source === 'recording' ? `Microphone changed: ${mic.name} → ${name}` : `The default microphone is now ${name} (was ${mic.name})`, 'err');
+  } else if (mic.source === 'recording' && source === 'default') {
+    return; // same device, and "used for your last recording" is the stronger fact
+  }
+  mic.name = name;
+  mic.source = source;
+  renderStatus();
+}
+
+// Before the first recording, and whenever devices are plugged in or removed,
+// ask the browser which input is the system default. Names stay hidden until
+// the microphone has been allowed once.
+async function checkDefaultMic() {
+  try {
+    const inputs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput');
+    setMic(micName((inputs.find((d) => d.deviceId === 'default') || inputs[0])?.label), 'default');
+  } catch { /* device list unavailable */ }
+}
+
+function micRow() {
+  if (!mic.name) return row('Mic', 'not known yet', { kind: 'idle', text: 'Unknown' }, 'the browser shows its name after the first recording');
+  const note = WIRELESS.test(mic.name) ? ' · phone or wireless mic: often slower to start and lower quality' : '';
+  const sub = (mic.source === 'recording' ? 'used for your last recording' : 'system default · used on the next press') + (mic.changed ? ' · changed this session' : '') + note;
+  const badge = note ? { kind: 'warn', text: 'Check' } : mic.source === 'recording' ? { kind: 'ok', text: 'In use' } : { kind: 'idle', text: 'Default' };
+  return row('Mic', escapeHtml(mic.name), badge, sub);
+}
+
 function fmtBytes(n) {
   if (n == null) return '—';
   const gb = n / 1024 ** 3;
@@ -184,6 +223,7 @@ function renderStatus() {
   els.status.innerHTML = [
     stale ? row('Update', 'Q’s server is older than this page', { kind: 'warn', text: 'Restart Q' }, 'some features and measurements are off until then') : '',
     row('Brain', s.model, brain, meta || (o.reachable ? '' : 'start the Ollama app')),
+    micRow(),
     row('Ears', `whisper.cpp`, ears, s.stt.ready ? `${s.stt.model.replace(/^ggml-|\.bin$/g, '')} · ${s.stt.mode === 'server' ? 'kept loaded' : 'reloads each turn'}` : s.stt.error),
     voiceRow,
     row('Model memory', fmtBytes(o.loadedVramBytes), { kind: 'idle', text: o.modelLoaded ? 'Measured' : 'Not loaded' }, 'reported by Ollama'),
@@ -437,6 +477,7 @@ function recordTurn(t) {
     turnIndex: S.messages.filter((m) => m.role === 'user').length,
     idleMs: st.idleMs ?? t.idleMs,
     firstChunk: t.firstChunk ?? null,
+    mic: t.mic ?? null,
     sys: t.sys ?? null,
   };
   S.runs = [...S.runs, t.run].slice(-MAX_RUNS);
@@ -484,7 +525,7 @@ async function pttDown() {
   els.mic.classList.add('held');
   setPhase('arming');
   S.arming = recorder.start()
-    .then(() => { if (S.ptt) setPhase('listening'); })
+    .then(() => { setMic(recorder.deviceName, 'recording'); if (S.ptt) setPhase('listening'); })
     .catch((err) => { S.ptt = false; els.mic.classList.remove('held'); fail(`Microphone unavailable: ${err.message}`); throw err; });
 }
 
@@ -499,6 +540,7 @@ async function pttUp() {
   if (result.durationMs < 300) { settle(); els.stateDetail.textContent = 'Too short — hold while you talk'; return; }
   const t = newTurn('voice', released);
   turn = t;
+  t.mic = recorder.deviceName;
   t.captureMs = result.durationMs;
   setPhase('transcribing');
   try {
@@ -696,8 +738,11 @@ function tickClock() {
 tickClock();
 setInterval(tickClock, 15_000);
 
+navigator.mediaDevices?.addEventListener?.('devicechange', checkDefaultMic);
+
 setPhase('boot');
 renderHistory();
 await refreshStatus();
+checkDefaultMic();
 loadVoices();
 setInterval(() => { if (!document.hidden) refreshStatus(); }, 8000);

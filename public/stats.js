@@ -3,7 +3,8 @@
 //
 // The export is built field by field from the allowlists below, never by
 // serialising a turn. Anything not named here (message text above all) cannot
-// end up in it.
+// end up in it. The one piece of free text per run is the microphone's device
+// name, which Jacquez asked to have recorded.
 
 export const SCHEMA = 1;
 export const MAX_RUNS = 200;
@@ -101,6 +102,7 @@ export function cleanRun(run) {
   for (const [k, allowed] of Object.entries(ENUMS)) out[k] = oneOf(run?.[k], allowed);
   out.cold = run?.cold === true;
   out.kind = kindOf(out);
+  out.mic = typeof run?.mic === 'string' ? run.mic.slice(0, 80) : null;
   out.sys = cleanSys(run?.sys);
   return out;
 }
@@ -111,13 +113,15 @@ export function buildExport(runs, header = {}, now = new Date()) {
   for (const k of HEADER_STRINGS) head[k] = typeof header[k] === 'string' ? header[k].slice(0, 200) : null;
   for (const k of HEADER_NUMBERS) head[k] = num(header[k]);
   const last = [...list].reverse().find((r) => r.sys)?.sys;
+  // Every microphone used in these runs, most recent last.
+  head.microphones = [...new Set(list.map((r) => r.mic).filter(Boolean))];
   head.power = last?.power ?? null;
   head.vscodeRunning = last?.vscodeRunning ?? null;
   return {
     schema: SCHEMA,
     exportedAt: now.toISOString(),
     systemSamples: list.filter((r) => r.sys).length,
-    contains: 'timings and system memory figures only — no transcripts, replies or audio',
+    contains: 'timings, system memory figures and microphone device names only — no transcripts, replies or audio',
     header: head,
     summary: summarize(list),
     runs: list,

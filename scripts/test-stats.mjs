@@ -72,6 +72,10 @@ check('cold flag, pressure and power survive', out.runs[0].cold === true && out.
 check('header keeps allowed strings, drops the rest', out.header.model === 'llama3.2:3b' && !('transcript' in out.header) && out.header.qVersion === null);
 check('header takes power and VS Code state from the latest sample', out.header.power === 'ac' && out.header.vscodeRunning === true);
 check('summary is included', out.summary.cold.n === 1 && out.summary.cold.p50 === 1234.6);
+const mics = buildExport([{ ...run(1), mic: 'MacBook Air Microphone' }, { ...run(2), mic: 'Jacquez’s iPhone Microphone' }, { ...run(3), mic: 'Jacquez’s iPhone Microphone' }, { ...run(4), mic: 42 }, { ...run(5), mic: 'x'.repeat(300) }]);
+check('each run keeps its microphone name', mics.runs[0].mic === 'MacBook Air Microphone' && mics.runs[1].mic === 'Jacquez’s iPhone Microphone');
+check('the header lists each microphone once, in order of use', same(mics.header.microphones.slice(0, 2), ['MacBook Air Microphone', 'Jacquez’s iPhone Microphone']));
+check('a non-text microphone value is dropped and a long one is cut to 80 characters', mics.runs[3].mic === null && mics.runs[4].mic.length === 80);
 check('garbage input does not throw', same(buildExport(null).runs, []) && cleanRun(undefined).total === null);
 
 console.log(failed ? `\n${failed} case(s) failed\n` : '\nAll cases passed\n');

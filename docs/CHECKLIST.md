@@ -85,6 +85,8 @@ Nothing here is finished. Some of it was started early while fixing v0.1.
 
 - [ ] **Top item: Whisper accuracy.** `base.en` misheard about 1 turn in 3 at normal volume on Jacquez's real voice. Test `small.en` and the vocabulary hint on his real voice, and check whether clipped beginnings are part of it.
   - [x] `small.en` downloaded, verified and compared on synthesized speech (2026-10-10): 68% exact with the hint against 58% for `base.en` with the hint, for about 0.29 s and 350 MB more. His real failures were not reproduced.
+  - [x] Q shows which microphone it is recording through and records it in the export. Found 2026-10-10: it had been using his iPhone as a Continuity microphone.
+  - [ ] Repeat the real-voice check on a known microphone (the MacBook's own) before judging Whisper: the 1-in-3 mishearing figure may be the iPhone's doing.
   - [ ] Compare the two models on his real voice. Not possible yet: Q has no way to run both on the same recording.
 
 - [x] Persona written as example replies, not percentages (`persona.md`, D-012).

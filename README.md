@@ -66,6 +66,8 @@ The core animates only for real events:
 - It shows thinking only while whisper or the model is working.
 - It shows speaking only while audio is playing.
 
+The System panel names the microphone Q is recording through, because the browser uses the system default and macOS can switch that without asking (a nearby iPhone becomes a Continuity microphone). If it changes mid-session, Q says so in the conversation.
+
 Memory figures come from Ollama and the server process. The network note says what the code does: the server binds to 127.0.0.1 and calls no cloud services. It doesn't claim outbound traffic has been verified, because it hasn't been yet.
 
 ## Files

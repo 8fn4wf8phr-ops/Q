@@ -11,6 +11,10 @@ function rms(analyser, buf) {
   return Math.sqrt(sum / buf.length);
 }
 
+// Chrome prefixes the system default device with "Default - "; drop it so the
+// same microphone has the same name whether it was listed or opened.
+export const micName = (label) => (label ? label.replace(/^Default - /, '').trim() : null);
+
 export class Recorder {
   constructor() { this.active = false; }
 
@@ -33,6 +37,8 @@ export class Recorder {
     await started;
     this.startedAt = performance.now();
     this.active = true;
+    // The device the browser actually opened, which is not always the one you expect.
+    this.deviceName = micName(this.stream.getAudioTracks()[0]?.label);
   }
 
   getLevel = () => (this.active && this.analyser ? Math.min(1, rms(this.analyser, this.buf) * 5) : 0);
