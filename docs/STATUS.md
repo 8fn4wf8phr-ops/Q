@@ -3,7 +3,7 @@
 _Claude Code updates this after every change. Labels: **proposed → approved → built → tested (stand-ins) → verified (real Mac)**. Only "verified" means it worked on Jacquez's Mac with real components._
 
 **Current version:** v0.1  
-**Last updated:** 2026-10-10 (Claude Code: timestamp fix and block history trim built and benchmarked on real Ollama, uncommitted)
+**Last updated:** 2026-10-10 (Claude Code: new persona applied in `21c0809` and tried in one ten-turn typed run)
 
 ## v0.1 — what exists
 | Feature | State |
@@ -16,6 +16,7 @@ _Claude Code updates this after every change. Labels: **proposed → approved �
 | Latency panel: per-stage times, voice-to-voice, median of last 12 turns | tested (stand-ins) |
 | System panel: model, speech and voice status; Ollama model memory; server process memory | tested (stand-ins) |
 | `persona.md` re-read every turn; last 8 turns of context | tested (stand-ins) |
+| Example-driven persona written by Jacquez (short first sentence, no assistant-speak, wider "can't do yet" list, twelve example exchanges), applied unchanged in `21c0809` | one ten-turn typed run on the real model 2026-10-10 (see Measurements); **not yet heard in a voice turn; no blind quality test** |
 | `npm run setup` (whisper-cpp, base.en model, llama3.2:3b) | run by Jacquez (Ollama 0.40.2 and whisper.cpp present 2026-10-10) |
 | Whole pipeline on the real Mac | first runs 2026-10-10; test conditions (browser, VS Code load, power) not recorded |
 | "Warming up" state until the startup model load finishes; a turn that waits on it is timed (`warmupWaitMs`) and labelled cold; warm-up now loads with the same `num_ctx` as chat (D-020) | tested (stand-ins): fake Ollama with a slow and a failing load, checked through the API and in a browser; **not yet run on the real pipeline** |
@@ -35,6 +36,8 @@ _Claude Code updates this after every change. Labels: **proposed → approved �
 9. **The first turn after a few idle minutes can be slow even though the model is "Loaded".** A 349-token prompt that normally takes about 0.2 s took 4.5 s after roughly six idle minutes, with 8–9 GB of swap in use. Likely the model's memory being paged back in; not yet investigated. This, not the cache, may explain some of the 11–12 s first tokens. Related to D-014.
 10. **Trimming still costs about 1.1–1.2 s on one turn in four** once a conversation passes 8 turns (was 1.6–1.9 s on every turn).
 11. **Timestamps on messages cost about 0.1 s per turn** (more tokens in each new message: prompt time on a cache hit went from about 0.16 s to 0.26 s).
+13. **The model only partly follows the new persona** (one typed run, 2026-10-10): the first sentence ran over the "about eight words" rule in 3 of 10 replies; two refusals and "big dawg" were copied word for word from the examples despite the rule against it; one reply used assistant-speak ("here to help and answer any questions") and one invented a claim ("been waiting for you to wake up").
+14. **The longer persona roughly doubles the fixed part of the prompt** (about 750 tokens on the first turn, up from about 390). It is cached after the first turn, but the first turn after a start or an idle spell pays for it: 7.8 s first token in the trial run.
 12. **Date answers from the 3B model are not fully reliable.** With the short stamp it answered the weekday wrongly once in 7 tries ("Sunday" on a Saturday); a longer stamp format got 6 of 6 but echoed the bracketed stamp aloud once in 4 date questions. The short format was kept. The old system-prompt time was never tested the same way, so there is no baseline.
 5. **Voice synthesis is the main bottleneck.** Each sentence spawns a new `say` process, which costs 1.3–4 s before any audio exists, regardless of sentence length. _(measured 2026-10-10; speech helper built as the new default, needs a real-Mac check)_
    - `sayRate` in the config is ignored by the helper (it only applies to the `say` fallback).
@@ -151,5 +154,18 @@ Prompt-processing time alone (Ollama's own figure):
 - In the gap runs first token is 50–550 ms above prompt time on some turns; that overhead appears after idle and is not explained yet.
 - Timestamp check: 14 benchmark replies contained no brackets, times or dates. "What time is it?" was right 3 of 3, including with a three-hour-old message in history.
 - Conditions: Chrome with many tabs, Claude desktop app; 8–9 GB of swap in use throughout; power state not recorded. Jacquez's own Q server was not running during the after runs.
+
+### 2026-10-10 — new persona, one ten-turn typed conversation (run by Claude Code through a temporary Q instance, real llama3.2:3b, no voice)
+| Check | Result |
+|---|---|
+| Replies of at most three sentences | 10 of 10 |
+| First sentence under about eight words | 7 of 10 (misses: 12, 14 and 13 words) |
+| Plain refusal when asked for something Q can't do (weather, open an app) | 2 of 2, both word for word from the persona's examples |
+| Recalled the previous turn when asked | 1 of 1 |
+| "What time is it?" | correct; no bracketed timestamp read back in any reply |
+| First token, turns 2–10 | 0.16–0.29 s, except 0.93 s on turn 9 when a history block was dropped |
+| First token, turn 1 (new persona, nothing cached, after idle) | 7.84 s (6.75 s of prompt processing for 748 tokens) |
+
+One run of a model that varies every time: these are observations, not rates.
 
 None of the speech-engine tables above are end-to-end numbers from Jacquez's browser. The cache benchmark (`scripts/bench-cache.mjs`) has not been run against real Ollama yet.
