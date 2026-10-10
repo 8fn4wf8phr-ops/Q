@@ -609,3 +609,4 @@ server.listen(CONFIG.port, '127.0.0.1', async () => {
 const shutdown = () => { stopping = true; stt.serverProc?.kill(); helper.proc?.kill(); process.exit(0); };
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
+process.on('SIGHUP', shutdown); // the Terminal window was closed

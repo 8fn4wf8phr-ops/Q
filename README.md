@@ -21,6 +21,8 @@ npm start
 
 4. Open http://127.0.0.1:4141 and allow the microphone when the browser asks.
 
+After the first run you can start Q by double-clicking **`Start Q.command`** in this folder. It makes sure Ollama is running, starts the server in a Terminal window and opens the page; if Q is already running it just opens the page. Close that window or press Ctrl+C in it to stop Q.
+
 After setup, you can turn Wi-Fi off and Q still works.
 
 ## Using it
@@ -73,6 +75,7 @@ public/core.js     the Q core renderer (Canvas 2D, ~30 fps when idle, honors Red
 public/audio.js    push-to-talk capture → 16 kHz WAV, and ordered sentence playback
 public/app.js      state machine, streaming, timing
 speech/q-speak.swift  speech helper source (compiled to bin/q-speak, which is not checked in)
+Start Q.command    double-click launcher (checks Ollama, runs npm start, opens the page)
 scripts/setup.sh   one-time install/download
 scripts/bench-cache.mjs  prompt-cache benchmark (timings only)
 ```

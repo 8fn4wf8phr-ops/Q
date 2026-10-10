@@ -3,7 +3,7 @@
 _Claude Code updates this after every change. Labels: **proposed → approved → built → tested (stand-ins) → verified (real Mac)**. Only "verified" means it worked on Jacquez's Mac with real components._
 
 **Current version:** v0.1  
-**Last updated:** 2026-10-10 (Claude Code: new persona applied in `21c0809` and tried in one ten-turn typed run)
+**Last updated:** 2026-10-10 (Claude Code: double-click launcher built and confirmed by Jacquez; slow first turn after idle measured)
 
 ## v0.1 — what exists
 | Feature | State |
@@ -26,6 +26,8 @@ _Claude Code updates this after every change. Labels: **proposed → approved �
 | `say` sentences are now synthesized one at a time instead of in parallel | tested (stand-ins): one typed turn; **effect on real latency not measured** |
 | Stable prompt prefix: the system prompt no longer changes; each user message carries a fixed timestamp from when it was created; history is capped at 8 turns or 6000 characters and old turns are dropped 4 at a time (D-006, D-022) | benchmarked on the real Mac against real Ollama through `/api/chat` 2026-10-10 (see Measurements); **not yet run in a real voice turn** |
 | "Prompt processing" row in the latency panel (time and prompt size) | built; **not yet seen in a browser** |
+| `Start Q.command`: double-click launcher. Opens the page if Q is already running; otherwise checks Ollama (opens the app and waits up to a minute), runs `npm start` in a Terminal window and opens the page when the server answers. No auto-start at login | tested from a shell on this Mac with a stand-in for the browser `open`: already-running, cold start through a symlink, second launch, busy port, Ollama not running; **double-click from Finder confirmed working by Jacquez 2026-10-10** |
+| Closing the Terminal window (SIGHUP) now shuts Q down cleanly, including `whisper-server` and the speech helper | tested by sending SIGHUP to a test instance: no stray processes left |
 | `scripts/bench-cache.mjs`: prompt-cache benchmark through `/api/chat` (back-to-back vs `--gap 61`, `--turns`, `--save`/`--load` for restart tests), timings only | run on the real Mac against real Ollama 2026-10-10 (see Measurements) |
 
 ## Known issues — fix before benchmarking
@@ -33,11 +35,13 @@ _Claude Code updates this after every change. Labels: **proposed → approved �
 2. **Instrumentation gaps for the v0.1 gate:** no p90, no swap or memory-pressure sampling (must come from the server), no cold vs warm split, no "Copy run data" export. The metric should be labeled "key release → first audio". The export must contain timings only, no transcripts or audio.
 3. **Whisper hallucinations on near-silent clips** (e.g. "Thank you."): only a 300 ms minimum exists; add a loudness check.
 4. **Push-to-talk only works while the browser tab is focused** (expected until v0.3).
-9. **The first turn after a few idle minutes can be slow even though the model is "Loaded".** A 349-token prompt that normally takes about 0.2 s took 4.5 s after roughly six idle minutes, with 8–9 GB of swap in use. Likely the model's memory being paged back in; not yet investigated. This, not the cache, may explain some of the 11–12 s first tokens. Related to D-014.
+9. **The first turn after a few idle minutes can be slow even though the model is "Loaded".** A 349-token prompt that normally takes about 0.2 s took 4.5 s after roughly six idle minutes, with 8–9 GB of swap in use. Measured 2026-10-10 (see Measurements): after 4 idle minutes macOS had compressed the model's memory and the next request decompressed about 2.7 GB, roughly the whole model. No fix built; options are fewer open apps, a keep-warm ping, or labelling the turn. This, not the cache, may explain some of the 11–12 s first tokens. Related to D-014 and the `keepAlive` open question.
 10. **Trimming still costs about 1.1–1.2 s on one turn in four** once a conversation passes 8 turns (was 1.6–1.9 s on every turn).
 11. **Timestamps on messages cost about 0.1 s per turn** (more tokens in each new message: prompt time on a cache hit went from about 0.16 s to 0.26 s).
 13. **The model only partly follows the new persona** (one typed run, 2026-10-10): the first sentence ran over the "about eight words" rule in 3 of 10 replies; two refusals and "big dawg" were copied word for word from the examples despite the rule against it; one reply used assistant-speak ("here to help and answer any questions") and one invented a claim ("been waiting for you to wake up").
 14. **The longer persona roughly doubles the fixed part of the prompt** (about 750 tokens on the first turn, up from about 390). It is cached after the first turn, but the first turn after a start or an idle spell pays for it: 7.8 s first token in the trial run.
+15. **The launcher always uses port 4141** (or `Q_PORT` if set in the environment); it does not read a port from `q.config.json`.
+16. **Two copies of Q on different ports share one `whisper-server` port (4142).** The second copy reports speech-to-text as ready because the first copy's whisper answers. Only reachable by starting Q twice on purpose with different ports; the launcher prevents a second copy on the same port.
 12. **Date answers from the 3B model are not fully reliable.** With the short stamp it answered the weekday wrongly once in 7 tries ("Sunday" on a Saturday); a longer stamp format got 6 of 6 but echoed the bracketed stamp aloud once in 4 date questions. The short format was kept. The old system-prompt time was never tested the same way, so there is no baseline.
 5. **Voice synthesis is the main bottleneck.** Each sentence spawns a new `say` process, which costs 1.3–4 s before any audio exists, regardless of sentence length. _(measured 2026-10-10; speech helper built as the new default, needs a real-Mac check)_
    - `sayRate` in the config is ignored by the helper (it only applies to the `say` fallback).
@@ -167,5 +171,17 @@ Prompt-processing time alone (Ollama's own figure):
 | First token, turn 1 (new persona, nothing cached, after idle) | 7.84 s (6.75 s of prompt processing for 748 tokens) |
 
 One run of a model that varies every time: these are observations, not rates.
+
+### 2026-10-10 — first turn after idle (run by Claude Code straight against Ollama: one identical, fully cached request after each idle gap; plugged in, Low Power Mode off, 9.4–9.8 GB swap in use)
+| Idle before request | First token | Prompt processing | Memory decompressed during the request | Generation |
+|---|---|---|---|---|
+| 0 s | 51 ms | 41 ms | 186 MB | 27.1 tok/s |
+| 20 s | 100 ms | 72 ms | 197 MB | 27.7 tok/s |
+| 60 s | 165 ms | 69 ms | 86 MB | 28.0 tok/s |
+| 120 s | 160 ms | 82 ms | 85 MB | 28.0 tok/s |
+| 240 s | 805 ms | 704 ms | 2665 MB | 27.5 tok/s |
+
+- The prompt was identical every time, so none of this is prompt-cache cost. Disk swap-ins stayed at 0–2 MB; the work was decompression.
+- One run, one sample per gap. It shows the mechanism but did not reproduce the 4.5–7.8 s seen earlier after longer idle spells; those may involve pages that had gone to disk, which this run did not capture.
 
 None of the speech-engine tables above are end-to-end numbers from Jacquez's browser. The cache benchmark (`scripts/bench-cache.mjs`) has not been run against real Ollama yet.
