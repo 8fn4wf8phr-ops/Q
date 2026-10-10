@@ -1,5 +1,6 @@
 import { QCore } from './core.js';
 import { Recorder, Player, BrowserSpeaker, blobToWav16k } from './audio.js';
+import { takeChunks } from './chunk.js';
 import { SCHEMA, MAX_RUNS, MIN_FOR_P90, IDLE_MS, kindOf, summarize, buildExport } from './stats.js';
 
 // What this page needs from the server (server.js API_LEVEL). A server started
@@ -36,6 +37,7 @@ const els = {
   engine: $('#engine'),
   engineNote: $('#engineNote'),
   speak: $('#speak'),
+  clauseFirst: $('#clauseFirst'),
   empty: $('#empty'),
 };
 
@@ -77,6 +79,7 @@ const S = {
   ptt: false,
   arming: null,
   speak: store.get('speak', true),
+  clauseFirst: store.get('clauseFirst', true),
   voice: store.get('voice', ''),
   engine: store.get('engine', 'say'),
   browserVoice: store.get('browserVoice', ''),
@@ -268,21 +271,7 @@ function systemNote(text, kind = '') {
   els.log.scrollTop = els.log.scrollHeight;
 }
 
-// ---------- sentence chunking for streaming speech ----------
-
-function takeSentences(buf) {
-  const out = [];
-  const re = /[.!?…]+["'”’)\]]*\s+|\n+/g;
-  let last = 0;
-  let m;
-  while ((m = re.exec(buf))) {
-    const end = m.index + m[0].length;
-    const s = buf.slice(last, end).trim();
-    if (s.replace(/[^\p{L}\p{N}]/gu, '').length >= 2) out.push(s);
-    last = end;
-  }
-  return { sentences: out, rest: buf.slice(last) };
-}
+// ---------- streaming speech ----------
 
 // `say` requests run one at a time: parallel `say` processes slow each other,
 // which delays the first sentence. Later ones still overlap playback.
@@ -379,9 +368,10 @@ async function runTurn(text) {
           full += msg.text;
           pending += msg.text;
           setBubble(bubble, full, { streaming: true });
-          const { sentences, rest } = takeSentences(pending);
-          pending = rest;
-          sentences.forEach(speakSentence);
+          const cut = takeChunks(pending, S.clauseFirst && !t.firstChunk);
+          pending = cut.rest;
+          if (cut.chunks.length && !t.firstChunk) t.firstChunk = cut.clause ? 'clause' : 'sentence';
+          cut.chunks.forEach(speakSentence);
         } else if (msg.type === 'done') {
           t.stats = msg.stats;
         } else if (msg.type === 'error') {
@@ -446,6 +436,7 @@ function recordTurn(t) {
     loudMs: t.level?.loudMs ?? null,
     turnIndex: S.messages.filter((m) => m.role === 'user').length,
     idleMs: st.idleMs ?? t.idleMs,
+    firstChunk: t.firstChunk ?? null,
     sys: t.sys ?? null,
   };
   S.runs = [...S.runs, t.run].slice(-MAX_RUNS);
@@ -574,7 +565,7 @@ function renderLatency() {
   const segs = [
     { key: 'hear', label: 'Speech → text', ms: t.source === 'voice' && t.tStt ? t.tStt - t.t0 : null },
     { key: 'think', label: 'First token', ms: t.tFirstToken && heardAt ? t.tFirstToken - heardAt : null },
-    { key: 'form', label: 'First sentence', ms: t.tFirstSentence && t.tFirstToken ? t.tFirstSentence - t.tFirstToken : null },
+    { key: 'form', label: 'First phrase', ms: t.tFirstSentence && t.tFirstToken ? t.tFirstSentence - t.tFirstToken : null },
     { key: 'voice', label: 'Voice synth', ms: t.tFirstAudio && t.tFirstSentence ? t.tFirstAudio - t.tFirstSentence : null },
   ];
   const total = segs.reduce((a, s) => a + (s.ms || 0), 0) || 1;
@@ -679,6 +670,8 @@ els.clearRuns.addEventListener('click', () => {
   renderHistory();
 });
 
+els.clauseFirst.checked = S.clauseFirst;
+els.clauseFirst.addEventListener('change', () => { S.clauseFirst = els.clauseFirst.checked; store.set('clauseFirst', S.clauseFirst); });
 els.speak.checked = S.speak;
 els.speak.addEventListener('change', () => { S.speak = els.speak.checked; store.set('speak', S.speak); if (!S.speak) stopSpeech(); });
 els.voice.addEventListener('change', () => {

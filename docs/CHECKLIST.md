@@ -89,6 +89,8 @@ Nothing here is finished. Some of it was started early while fixing v0.1.
 - [ ] Persona followed reliably. One typed run showed long first sentences, example lines copied word for word, and one invented claim.
 - [x] Speed: persistent speech helper (D-021) and stable prompt prefix (D-006, D-022) are in the code.
 - [ ] Speed: first turn after a few idle minutes is slow because macOS compresses the model's memory. Measured, no fix chosen (D-014).
+- [x] Speed: Q can start speaking at the first clause instead of the first full sentence (`public/chunk.js`, D-025); about 0.5 s sooner on roughly half of replies in a 30-prompt test.
+- [ ] Listen to first-clause speech and decide whether the breaks sound natural enough to keep on.
 - [ ] Speed: the first words can be clipped because the mic opens fresh on every press.
 - [ ] Continuity within a conversation is limited to the last 4–8 turns (`trimHistory()`); nothing carries across sessions.
 - [ ] Blind pairwise quality evaluation (D-008). Not started; no prompts, no harness.

@@ -19,6 +19,7 @@ const NUMBERS = [
 ];
 const ENUMS = {
   kind: ['warm', 'idle', 'cold'],
+  firstChunk: ['clause', 'sentence'],
   source: ['voice', 'text'],
   engine: ['helper', 'say', 'piper', 'browser', 'none'],
 };
@@ -72,6 +73,12 @@ export function summarize(runs) {
     cold: group(voice.filter((r) => kindOf(r) === 'cold')),
     idleMeansAtLeastMs: IDLE_MS,
     p90NeedsAtLeast: MIN_FOR_P90,
+    // "firstSentence" is the time from first token to the first piece Q could
+    // speak; firstChunk says whether that piece was a clause or a whole sentence.
+    firstPhrase: Object.fromEntries(['clause', 'sentence'].map((c) => {
+      const of = voice.filter((r) => r.firstChunk === c);
+      return [c, { n: of.length, medianMs: num(percentile(of.map((r) => r.firstSentence), 0.5)) }];
+    })),
     stageMedians: { stt: stage('stt'), firstToken: stage('firstToken'), firstSentence: stage('firstSentence'), voiceSynth: stage('voiceSynth'), promptMs: stage('promptMs') },
   };
 }

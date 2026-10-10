@@ -3,7 +3,7 @@
 _Claude Code updates this after every change. Labels: **proposed → approved → built → tested (stand-ins) → verified (real Mac)**. Only "verified" means it worked on Jacquez's Mac with real components._
 
 **Current version:** v0.1  
-**Last updated:** 2026-10-10 (Claude Code: recorded Jacquez's first full export after the restart; small export fix uncommitted)  
+**Last updated:** 2026-10-10 (Claude Code: first-clause speech and timestamp-echo filter built, uncommitted)  
 **What's left:** see [CHECKLIST.md](CHECKLIST.md), which covers the whole roadmap and lists each item as built or not, checked against the code.
 
 ## v0.1 — what exists
@@ -11,6 +11,8 @@ _Claude Code updates this after every change. Labels: **proposed → approved �
 |---|---|
 | Push-to-talk (hold Space in the browser tab) → whisper.cpp → Ollama → `say` | run on the real Mac 2026-10-10: works end to end, **latency far over the 1.5 s target** (see Measurements) |
 | Speech starts after the first sentence; later sentences synthesize while earlier ones play | tested (stand-ins) |
+| First-clause speech: the first piece of a reply may end at a comma, semicolon, colon or dash once three words are ready ("Start speaking at the first pause" in the Voice panel, on by default); each turn records whether its first piece was a clause or a sentence (D-025) | tested: `npm test` (11 chunking cases) and three typed turns on the real model in Claude's built-in Chromium, 2026-10-10; **not yet heard by Jacquez, and whether the breaks sound natural is his call** |
+| Timestamp-echo filter (`echo.js`): a bracketed timestamp the model copies back at the start of a reply is removed before the reply is shown, spoken or kept in history | tested: `npm test` (10 cases) and 40 real replies through the server with none leaking, 2026-10-10 |
 | whisper-server stays loaded between turns (falls back to whisper-cli) | tested (stand-ins) |
 | Q Core Canvas animation tied to real mic, inference and playback events; ~30 fps idle; Reduce Motion | tested (stand-ins) |
 | Interrupt via Esc, the Stop button or clicking the core; typed input fallback | tested (stand-ins) |
@@ -69,7 +71,7 @@ _Claude Code updates this after every change. Labels: **proposed → approved �
 14. **The longer persona roughly doubles the fixed part of the prompt** (about 750 tokens on the first turn, up from about 390). It is cached after the first turn, but the first turn after a start or an idle spell pays for it: 7.8 s first token in the trial run.
 15. **The launcher always uses port 4141** (or `Q_PORT` if set in the environment); it does not read a port from `q.config.json`.
 16. **Two copies of Q on different ports share one `whisper-server` port (4142).** The second copy reports speech-to-text as ready because the first copy's whisper answers. Only reachable by starting Q twice on purpose with different ports; the launcher prevents a second copy on the same port.
-12. **Date answers from the 3B model are not fully reliable.** With the short stamp it answered the weekday wrongly once in 7 tries ("Sunday" on a Saturday); a longer stamp format got 6 of 6 but echoed the bracketed stamp aloud once in 4 date questions. The short format was kept. The old system-prompt time was never tested the same way, so there is no baseline.
+12. **(Echo now filtered, 2026-10-10.)** In a 30-reply test one reply began by reading its timestamp back ("[Sat, Oct 10, 2026, 2:10 PM] For me, …"); the filter removes a leading echoed stamp. An echo in the middle of a reply is not removed. **Date answers from the 3B model are not fully reliable.** With the short stamp it answered the weekday wrongly once in 7 tries ("Sunday" on a Saturday); a longer stamp format got 6 of 6 but echoed the bracketed stamp aloud once in 4 date questions. The short format was kept. The old system-prompt time was never tested the same way, so there is no baseline.
 5. **Voice synthesis is the main bottleneck.** Each sentence spawns a new `say` process, which costs 1.3–4 s before any audio exists, regardless of sentence length. _(measured 2026-10-10; speech helper built as the new default, needs a real-Mac check)_
    - `sayRate` in the config is ignored by the helper (it only applies to the `say` fallback).
    - Each voice costs a one-time load the first time it is used (Samantha about 0.5–0.9 s, paid at startup; other voices 0.2–0.5 s on first use).
@@ -256,5 +258,17 @@ One run of a model that varies every time: these are observations, not rates.
 - Input level on real speech across all 10 exported turns: loudest frame −27 to −6 dB, far above the silence guard's −50 dB threshold. Silent holds have not been measured yet.
 - Idle label on the earlier six turns (old server, client-measured idle): 3.0 min idle → 1614 ms (not slow), 2.6 min → 1429 ms, 7.6 min → 5957 ms. One slow and one fast turn in the idle group; the slowdown starts somewhere between 3 and 7.6 minutes.
 - Export fault found: the six turns recorded against the old server carried an empty memory object, and the export counted them as samples ("systemSamples": 10; the true figure is 4). Fixed in `public/stats.js`.
+
+### 2026-10-10 — how much sooner a first clause arrives than a first sentence (30 single-turn typed prompts, real model, current persona; measured on the token stream before the feature was built)
+| Measure | Result |
+|---|---|
+| First token → end of first sentence | median 609 ms, range 119–1480 ms |
+| Replies with a clause break (after 3+ words) inside the first sentence | 17 of 30 |
+| Time saved on those by speaking at the clause | median 502 ms, range 125–1211 ms |
+| Averaged over all 30 replies | 294 ms |
+| First sentences of 8 words or fewer (the persona's rule) | 12 of 30; median first sentence 12 words |
+
+- Some breaks are awkward: "Break down big tasks into smaller, | manageable chunks"; "Practice in front of a mirror, | record yourself, and watch or listen".
+- After the build, three typed turns in a browser: first piece was a clause on two (first phrase 311 and 154 ms) and a sentence on one (359 ms).
 
 None of the speech-engine tables above are end-to-end numbers from Jacquez's browser. The cache benchmark (`scripts/bench-cache.mjs`) has not been run against real Ollama yet.

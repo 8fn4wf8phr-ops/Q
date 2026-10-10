@@ -45,7 +45,7 @@ The bar breaks that time into four stages:
 
 - **Speech → text**: whisper.cpp transcribing you.
 - **First token**: the model starting to reply (watch for a cold start on the first turn).
-- **First sentence**: the model finishing its first sentence. Q starts speaking after one sentence, not after the whole reply.
+- **First phrase**: the model producing the first piece Q can speak. That is the first sentence, or, with "Start speaking at the first pause" on in the Voice panel, the first clause of at least three words.
 - **Voice synth**: the macOS voice rendering that sentence to audio.
 
 Under the bars, the panel shows p50 and p90 for warm and cold voice turns separately (p90 appears once a group has ten turns). **Copy run data** puts the timings for up to the last 200 turns on the clipboard as JSON, with memory and power figures sampled by the server: numbers only, never what was said. **Clear** deletes the stored timings.
@@ -75,6 +75,8 @@ server.js          local server: /api/transcribe, /api/chat (streamed), /api/spe
 persona.md         Q's personality (system prompt)
 public/core.js     the Q core renderer (Canvas 2D, ~30 fps when idle, honors Reduce Motion)
 public/audio.js    push-to-talk capture → 16 kHz WAV, and ordered sentence playback
+public/chunk.js    cuts the streaming reply into pieces to speak (npm test covers it)
+echo.js            removes a timestamp the model copies back at the start of a reply
 public/stats.js    p50/p90, cold vs warm, and the run-data export (npm test covers it)
 public/level.js    loudness check that skips Whisper on near-silent recordings (npm test covers it)
 public/app.js      state machine, streaming, timing
