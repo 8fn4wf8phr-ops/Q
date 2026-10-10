@@ -13,7 +13,7 @@ Covers the whole roadmap in `BRIEF.md`, v0.1 through v1.1+. v0.1 is itemised bec
 |---|---|---|---|
 | 1 | Voice-speed fix | Done | Partly: speed confirmed; the dropped-sentence fix is not yet heard |
 | 2 | Timestamp fix | Done | Partly: benchmarked, not yet in a voice turn |
-| 3 | Warm-up "Ready" truthfulness bug | Done | Not done |
+| 3 | Warm-up "Ready" truthfulness bug | Done (second fix after a failed real test) | Not done: re-test after restarting Q |
 | 4 | Silence guard | Done | Not done: needs calibrating on the real mic |
 | 5 | Run-data export | Done | Not done: needs real voice turns and the clipboard tried in Chrome |
 | 6 | ~30-turn benchmark | Not done | — |
@@ -37,7 +37,9 @@ Covers the whole roadmap in `BRIEF.md`, v0.1 through v1.1+. v0.1 is itemised bec
 ## 3. Warm-up "Ready" truthfulness bug — built, not confirmed
 - [x] Server tracks the warm-up and reports it (`server.js` `warm`, `warmupWaitMs`).
 - [x] UI shows "Warming up" and labels a turn that waited on it as cold (`public/app.js`).
-- [ ] Real check: quit and reopen Ollama, start Q, ask at once. Expect "Warming up", then a turn labelled cold. Only stand-in tests so far.
+- [x] Real check by Jacquez, 2026-10-10: **failed**. After quitting and reopening Ollama, Q showed "Ready" while Brain said "Installed", and the first turn paid the load plus 3.39 s of prompt processing.
+- [x] Fix: the warm-up re-runs whenever the model isn't in memory, and primes the real system prompt (`server.js` `warmIfNeeded()`, `warmModel()`). Cold first turn went from 3.2–5.1 s to 0.32–0.38 s in the benchmark.
+- [ ] Re-test: restart Q, then quit and reopen Ollama. Expect "Warming up" within about 8 seconds, then a fast first turn.
 
 ## 4. Silence guard — built, not confirmed
 - [x] Near-silent recordings skip Whisper (`public/level.js` `measureLevel()`, used in `public/audio.js` and `public/app.js`).
@@ -51,7 +53,9 @@ Covers the whole roadmap in `BRIEF.md`, v0.1 through v1.1+. v0.1 is itemised bec
 - [x] Swap, memory pressure and process memory sampled on the server per turn (`server.js` `/api/system`).
 - [x] "Copy run data" button; the export is built from an allowlist and `npm test` checks no message text can get in.
 - [x] Main metric labelled "Key release → first audio" and timed from key release.
-- [ ] Do a few real voice turns and check the numbers look right.
+- [x] Real voice turns by Jacquez, 2026-10-10: timings look right.
+- [x] Turns after 3+ minutes idle get their own label and their own line in the summary (`public/stats.js` `kindOf()`).
+- [ ] Restart Q and export again: the memory figures and five header fields were empty because the running server predated the export code.
 - [ ] Press "Copy run data" in Chrome and confirm it lands on the clipboard.
 
 ## 6. ~30-turn benchmark — not done
@@ -77,6 +81,8 @@ Covers the whole roadmap in `BRIEF.md`, v0.1 through v1.1+. v0.1 is itemised bec
 # v0.2 — tune personality, continuity and speed; blind quality evaluation; better macOS voice
 
 Nothing here is finished. Some of it was started early while fixing v0.1.
+
+- [ ] **Top item: Whisper accuracy.** `base.en` misheard about 1 turn in 3 at normal volume on Jacquez's real voice. Test `small.en` and the vocabulary hint on his real voice, and check whether clipped beginnings are part of it.
 
 - [x] Persona written as example replies, not percentages (`persona.md`, D-012).
 - [ ] Persona followed reliably. One typed run showed long first sentences, example lines copied word for word, and one invented claim.

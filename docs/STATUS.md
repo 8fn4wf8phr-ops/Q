@@ -3,7 +3,7 @@
 _Claude Code updates this after every change. Labels: **proposed → approved → built → tested (stand-ins) → verified (real Mac)**. Only "verified" means it worked on Jacquez's Mac with real components._
 
 **Current version:** v0.1  
-**Last updated:** 2026-10-10 (Claude Code: run-data export built; checklist extended to the whole roadmap; both uncommitted)  
+**Last updated:** 2026-10-10 (Claude Code: warm-up now re-runs when the model is unloaded and primes the real system prompt; idle label; stale-server warning; three persona lines; all uncommitted)  
 **What's left:** see [CHECKLIST.md](CHECKLIST.md), which covers the whole roadmap and lists each item as built or not, checked against the code.
 
 ## v0.1 — what exists
@@ -25,7 +25,10 @@ _Claude Code updates this after every change. Labels: **proposed → approved �
 | Example-driven persona written by Jacquez (short first sentence, no assistant-speak, wider "can't do yet" list, twelve example exchanges), applied unchanged in `21c0809` | one ten-turn typed run on the real model 2026-10-10 (see Measurements); **confirmed working by Jacquez 2026-10-10**; no blind quality test |
 | `npm run setup` (whisper-cpp, base.en model, llama3.2:3b) | run by Jacquez (Ollama 0.40.2 and whisper.cpp present 2026-10-10) |
 | Whole pipeline on the real Mac | first runs 2026-10-10; test conditions (browser, VS Code load, power) not recorded |
-| "Warming up" state until the startup model load finishes; a turn that waits on it is timed (`warmupWaitMs`) and labelled cold; warm-up now loads with the same `num_ctx` as chat (D-020) | tested (stand-ins): fake Ollama with a slow and a failing load, checked through the API and in a browser; **not yet run on the real pipeline** |
+| "Warming up" state until the startup model load finishes; a turn that waits on it is timed (`warmupWaitMs`) and labelled cold; warm-up now loads with the same `num_ctx` as chat (D-020) | **real-Mac test by Jacquez 2026-10-10 found two gaps**: after Ollama was quit and reopened Q showed "Ready" with Brain "Installed", and the first turn paid a 3.8 s load (correctly labelled cold) plus 3.39 s of prompt processing for 745 tokens. Both addressed in the next row |
+| Warm-up runs again whenever a status poll finds Ollama reachable with the model not in memory, and it primes Ollama's cache with the real system prompt instead of an empty one (D-024) | benchmarked on the real Mac against real Ollama through a second Q instance 2026-10-10 (see Measurements); **not yet seen in Jacquez's browser** |
+| Turns that follow 3 minutes or more without the model being used are labelled "idle" (server-measured), and the statistics and export report warm, idle and cold separately | tested: `npm test` (33 cases in the statistics file); **no real idle turn recorded with the new label yet** |
+| The page warns "Q's server is older than this page · Restart Q" when the running server predates the page's code; a failed memory sample is no longer stored as a sample | built 2026-10-10 after Jacquez's export came back with every memory field empty because his server had been running since before the export code existed; **not yet seen in a browser** |
 | Samantha is the default voice when none is chosen, falling back to the system voice if she isn't installed; the Voice panel names the real default (D-018) | tested (stand-ins): `/api/status` and `/api/speak` on this Mac with a fake Ollama; **not yet confirmed in a real turn** |
 | Voice engine selector: "Browser speech (local voices only)" next to "macOS say"; browser speech never uses a non-local voice; the core pulses on real word events; "first audio" is the first word event, not the browser's early `start` event. Default engine is still `say` (D-019) | tested (stand-ins): fake Ollama, typed turns in Claude's built-in Chromium on this Mac, including interrupt and switch; **not yet run in Jacquez's browser or with the mic** |
 | Speech helper (`speech/q-speak.swift` → `bin/q-speak`): one process kept loaded, returns audio through `/api/speak`; default voice path, with automatic fallback to `say` if it isn't built or stops, shown in the System panel (D-021) | tested (stand-ins): real helper and real voices on this Mac through the server and Claude's built-in Chromium, with a fake Ollama; **one real voice turn by Jacquez 2026-10-10: voice synth 0.21 s (was 3.40 s)** |
@@ -53,6 +56,9 @@ _Claude Code updates this after every change. Labels: **proposed → approved �
    - Synthesized speech turned down 40 dB (loudest frame about -52 dB) is rejected; that is the current lower limit for quiet speech.
    - Steady loud noise still reaches Whisper. The guard catches silence, not noise.
    - The last 100 ms of each recording is ignored so the key-release click doesn't count as sound.
+19. **Whisper `base.en` misheard about 1 in 3 turns at normal volume on Jacquez's real voice** (2026-10-10): "What time is it" → "Make sure what time is there"; "Tell me about Spider-Man" → "Don't leave out Spider-Man". This is the top v0.2 item: test `small.en` and the vocabulary hint on his real voice. Note the server in that session predated the vocabulary hint, so the hint has still not been tried on his voice. Both errors add or change words at the very start, which also fits a clipped beginning (the mic opens fresh on every press).
+20. **While a Q tab is open and visible, the model no longer stays unloaded.** The new re-warm fires on the next status poll (every 8 s) whenever the model isn't in memory, so Ollama's `keepAlive` unload only holds when the tab is closed or hidden. That keeps about 2.4 GB in use. Tied to D-014 and the `keepAlive` open question.
+21. **A server that hasn't been restarted keeps serving new pages.** Now flagged in the System panel, but everything server-side (vocabulary hint, helper fix, warm-up changes, memory sampling) only takes effect after a restart.
 4. **Push-to-talk only works while the browser tab is focused** (expected until v0.3).
 17. **Quiet speech can be misheard** (reported by Jacquez 2026-10-10). Tests with synthesized speech point at three causes, not volume alone: background noise close to the voice level, unusual words ("Q", "Ollama"), and a clipped start. The vocabulary hint addresses the second. Still open: the first words can be clipped because the mic is opened fresh on every press, and "Hey Q" spoken quietly still came out as "Thank you." in 2 of 4 conditions.
 18. **The speech helper as first pushed (`b69cbcb` to `582ae00`) could drop sentences.** When a request reached it within a few milliseconds of the previous reply, the next sentence came back empty: 45 of 60 at a 0 ms gap, 0 of 60 at 5 ms or more. How often Q's page hit that window in real use is not known. Fixed 2026-10-10.
@@ -216,5 +222,24 @@ One run of a model that varies every time: these are observations, not rates.
 - Silence and noise clips returned nothing with or without the hint, so the hint did not leak into empty audio.
 - Caveats: a synthetic voice, not Jacquez's; and two of the test sentences use phrases that are in the hint itself, which flatters the result.
 - Volume alone was not the problem: ordinary sentences were transcribed correctly 38 dB quieter in a quiet room. Cutting the first 0.3 s off a clip lost the opening words every time and once produced a phantom "Thank you."
+
+### 2026-10-10 — real-Mac voice turns reported by Jacquez (server started 11:59, so: speech helper before its fix, no vocabulary hint, no memory sampling)
+| What | Result |
+|---|---|
+| Warm turns, key release → first audio | 1.37–1.61 s, every stage under 0.6 s |
+| Turn after 7.6 min idle | 5.96 s (speech → text 1.60 s, prompt processing 2.43 s for 942 tokens); was labelled warm |
+| First turn after quitting and reopening Ollama | 3.8 s model load plus 3.39 s prompt processing for 745 tokens; Q showed "Ready" beforehand |
+| Whisper accuracy | about 1 turn in 3 misheard at normal volume |
+| Export | timings correct; every memory field and five header fields empty (stale server, see known issue 21) |
+
+### 2026-10-10 — cold first turn, before vs after (real Ollama, second Q instance on port 4198; before = `eb7f659`, after = working tree; 2 trials each)
+| Case | Before: first token | After: first token |
+|---|---|---|
+| Model not loaded, then Q starts | 3184, 3342 ms (load 7–10 ms, prompt 3089–3288 ms for 751 tokens) | 342, 319 ms (prompt 268–269 ms) |
+| Q running, then the model is dropped as an Ollama restart does; one status poll; 10 s later a turn | 4357, 5111 ms (load 1334–2084 ms, prompt 2964–2965 ms) | 348, 382 ms (load 5–23 ms, prompt 287–290 ms) |
+
+- The cost moved into the warm-up, where it belongs: "Warming up" now lasts about 3–5 s (about 1.1 s load plus 2.8 s priming the system prompt) instead of the first turn paying it.
+- A first attempt at the second case showed no gain because a retry throttle blocked re-warming within 15 s of a successful warm-up; fixed, and the figures above are after that fix.
+- A second and third turn after the primed first turn took 165 and 276 ms to first token.
 
 None of the speech-engine tables above are end-to-end numbers from Jacquez's browser. The cache benchmark (`scripts/bench-cache.mjs`) has not been run against real Ollama yet.
