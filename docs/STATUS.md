@@ -3,7 +3,7 @@
 _Claude Code updates this after every change. Labels: **proposed → approved → built → tested (stand-ins) → verified (real Mac)**. Only "verified" means it worked on Jacquez's Mac with real components._
 
 **Current version:** v0.1  
-**Last updated:** 2026-10-10 (Claude Code: warm-up now re-runs when the model is unloaded and primes the real system prompt; idle label; stale-server warning; three persona lines; all uncommitted)  
+**Last updated:** 2026-10-10 (Claude Code: recorded Jacquez's first full export after the restart; small export fix uncommitted)  
 **What's left:** see [CHECKLIST.md](CHECKLIST.md), which covers the whole roadmap and lists each item as built or not, checked against the code.
 
 ## v0.1 — what exists
@@ -241,5 +241,20 @@ One run of a model that varies every time: these are observations, not rates.
 - The cost moved into the warm-up, where it belongs: "Warming up" now lasts about 3–5 s (about 1.1 s load plus 2.8 s priming the system prompt) instead of the first turn paying it.
 - A first attempt at the second case showed no gain because a retry throttle blocked re-warming within 15 s of a successful warm-up; fixed, and the figures above are after that fix.
 - A second and third turn after the primed first turn took 165 and 276 ms to first token.
+
+### 2026-10-10 — first export from the restarted server (Jacquez, Chrome 154, on battery, VS Code running; 4 voice turns, memory figures present)
+| Turn | Key release → first audio | Speech → text | First token | First sentence | Voice synth | Prompt processing |
+|---|---|---|---|---|---|---|
+| 1 (first turn after the restart) | 2149 ms | 605 | 584 | 780 | 181 | 356 ms / 792 tokens |
+| 2 | 2075 ms | 395 | 562 | 935 | 183 | 343 ms / 842 tokens |
+| 3 | 2225 ms | 282 | 346 | 1377 | 220 | 236 ms / 892 tokens |
+| 4 | 1816 ms | 422 | 419 | 805 | 171 | 228 ms / 949 tokens |
+
+- The first turn after a restart was not slow: prompt processing 0.36 s for 792 tokens, against 3.39 s for 745 tokens before the priming fix. That is real-Mac evidence for the warm-up fix on the Q-restart path; the Ollama quit-and-reopen path has not been re-tested.
+- "First sentence" is now the largest stage (0.78–1.38 s). The model was generating at 19–20 tokens per second and each reply's first sentence ran 16–26 tokens, so Q waits about a second for a sentence to finish before it can speak.
+- Memory: swap 5.3 of 6.1 GB in use, 55–79 MB free, pressure "warning" on every sample. Between turns 12–15 s apart the whole Mac decompressed 3.2–4.9 GB and paged in 0.5–1.4 GB, so the system was churning memory even during active use.
+- Input level on real speech across all 10 exported turns: loudest frame −27 to −6 dB, far above the silence guard's −50 dB threshold. Silent holds have not been measured yet.
+- Idle label on the earlier six turns (old server, client-measured idle): 3.0 min idle → 1614 ms (not slow), 2.6 min → 1429 ms, 7.6 min → 5957 ms. One slow and one fast turn in the idle group; the slowdown starts somewhere between 3 and 7.6 minutes.
+- Export fault found: the six turns recorded against the old server carried an empty memory object, and the export counted them as samples ("systemSamples": 10; the true figure is 4). Fixed in `public/stats.js`.
 
 None of the speech-engine tables above are end-to-end numbers from Jacquez's browser. The cache benchmark (`scripts/bench-cache.mjs`) has not been run against real Ollama yet.

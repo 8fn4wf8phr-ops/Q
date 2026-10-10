@@ -82,6 +82,9 @@ export function cleanSys(sys) {
   for (const k of SYS_NUMBERS) out[k] = num(sys[k]);
   for (const [k, allowed] of Object.entries(SYS_ENUMS)) out[k] = oneOf(sys[k], allowed);
   for (const k of SYS_BOOLS) out[k] = typeof sys[k] === 'boolean' ? sys[k] : null;
+  // An object with nothing usable in it (a failed sample stored by an older
+  // page) is no sample at all.
+  if (Object.values(out).every((v) => v === null)) return null;
   return out;
 }
 

@@ -48,6 +48,7 @@ check('summary reports the three groups separately', sm.warm.n === 2 && sm.idle.
 check('the idle turn does not inflate the warm p50', sm.warm.p50 === 1400 && sm.idle.p50 === 5960);
 const ex = buildExport(mixed);
 check('each exported run carries its kind', same(ex.runs.map((r) => r.kind), ['warm', 'warm', 'idle', 'cold']));
+check('a stored sample with nothing usable in it is not counted', buildExport([{ ...run(1), sys: { error: 'not found' } }]).systemSamples === 0 && buildExport([{ ...run(1), sys: { error: 'not found' } }]).runs[0].sys === null);
 check('export counts how many runs have a system sample', ex.systemSamples === 0 && buildExport([{ ...run(1), sys: { swapUsedMb: 1 } }]).systemSamples === 1);
 
 console.log('\nExport contains numbers only');

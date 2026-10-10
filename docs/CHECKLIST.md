@@ -12,10 +12,10 @@ Covers the whole roadmap in `BRIEF.md`, v0.1 through v1.1+. v0.1 is itemised bec
 | # | Item | Built | Confirmed on the real Mac |
 |---|---|---|---|
 | 1 | Voice-speed fix | Done | Partly: speed confirmed; the dropped-sentence fix is not yet heard |
-| 2 | Timestamp fix | Done | Partly: benchmarked, not yet in a voice turn |
+| 2 | Timestamp fix | Done | Done |
 | 3 | Warm-up "Ready" truthfulness bug | Done (second fix after a failed real test) | Not done: re-test after restarting Q |
 | 4 | Silence guard | Done | Not done: needs calibrating on the real mic |
-| 5 | Run-data export | Done | Not done: needs real voice turns and the clipboard tried in Chrome |
+| 5 | Run-data export | Done | Done |
 | 6 | ~30-turn benchmark | Not done | — |
 | 7 | New persona is in | Done | Done |
 
@@ -27,19 +27,20 @@ Covers the whole roadmap in `BRIEF.md`, v0.1 through v1.1+. v0.1 is itemised bec
 - [x] Fixed a helper bug that could return a sentence with no audio when requests came back to back (`speech/q-speak.swift`; 40 of 40 queued runs and 120 of 120 sequential sentences at full length after the fix).
 - [ ] After a restart, hear a reply of three or more sentences with none missing.
 
-## 2. Timestamp fix — built, partly confirmed
+## 2. Timestamp fix — done and confirmed
 - [x] The time is no longer in the system prompt; each user message carries the time it was sent (`server.js` `stamped()`, `public/app.js` `at: Date.now()`).
 - [x] History is capped at 8 turns or 6000 characters and trimmed 4 turns at a time (`server.js` `trimHistory()`).
 - [x] "Prompt processing" row is in the latency panel code.
 - [x] Benchmarked on real Ollama: first token when every turn crosses a minute went from 0.61–1.85 s to 0.34–0.85 s.
-- [ ] See it in a real voice turn, including the "Prompt processing" row in the browser.
+- [x] Seen in real voice turns by Jacquez, 2026-10-10: "Prompt processing 0.23 s · 949 tokens" on a warm turn.
 
 ## 3. Warm-up "Ready" truthfulness bug — built, not confirmed
 - [x] Server tracks the warm-up and reports it (`server.js` `warm`, `warmupWaitMs`).
 - [x] UI shows "Warming up" and labels a turn that waited on it as cold (`public/app.js`).
 - [x] Real check by Jacquez, 2026-10-10: **failed**. After quitting and reopening Ollama, Q showed "Ready" while Brain said "Installed", and the first turn paid the load plus 3.39 s of prompt processing.
 - [x] Fix: the warm-up re-runs whenever the model isn't in memory, and primes the real system prompt (`server.js` `warmIfNeeded()`, `warmModel()`). Cold first turn went from 3.2–5.1 s to 0.32–0.38 s in the benchmark.
-- [ ] Re-test: restart Q, then quit and reopen Ollama. Expect "Warming up" within about 8 seconds, then a fast first turn.
+- [x] Q-restart path confirmed in Jacquez's export, 2026-10-10: first turn after the restart processed its prompt in 0.36 s.
+- [ ] Re-test the Ollama path: quit and reopen Ollama with Q running. Expect "Warming up" within about 8 seconds, then a fast first turn.
 
 ## 4. Silence guard — built, not confirmed
 - [x] Near-silent recordings skip Whisper (`public/level.js` `measureLevel()`, used in `public/audio.js` and `public/app.js`).
@@ -47,7 +48,7 @@ Covers the whole roadmap in `BRIEF.md`, v0.1 through v1.1+. v0.1 is itemised bec
 - [ ] Calibrate on the real microphone: a few silent holds and a few quiet sentences, then set the threshold from the levels Q reports.
 - [ ] Confirm a silent hold no longer produces a phantom reply.
 
-## 5. Run-data export — built, not confirmed
+## 5. Run-data export — done and confirmed
 - [x] p50 and p90, warm and cold separately; p90 from 10 turns up (`public/stats.js`).
 - [x] Every turn stored as numbers only, with a cold flag and idle time, up to 200 turns (`public/app.js` `recordTurn()`).
 - [x] Swap, memory pressure and process memory sampled on the server per turn (`server.js` `/api/system`).
@@ -55,8 +56,8 @@ Covers the whole roadmap in `BRIEF.md`, v0.1 through v1.1+. v0.1 is itemised bec
 - [x] Main metric labelled "Key release → first audio" and timed from key release.
 - [x] Real voice turns by Jacquez, 2026-10-10: timings look right.
 - [x] Turns after 3+ minutes idle get their own label and their own line in the summary (`public/stats.js` `kindOf()`).
-- [ ] Restart Q and export again: the memory figures and five header fields were empty because the running server predated the export code.
-- [ ] Press "Copy run data" in Chrome and confirm it lands on the clipboard.
+- [x] Exported again after the restart, 2026-10-10: header complete, memory figures present on all four new turns, copied from Chrome.
+- [x] "Copy run data" works in Chrome (Jacquez pasted the export, 2026-10-10).
 
 ## 6. ~30-turn benchmark — not done
 - [ ] About 30 voice turns over two sessions with VS Code open; record the browser, VS Code's workload and whether the Mac is plugged in.
