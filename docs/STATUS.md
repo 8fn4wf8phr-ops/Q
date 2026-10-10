@@ -3,7 +3,7 @@
 _Claude Code updates this after every change. Labels: **proposed → approved → built → tested (stand-ins) → verified (real Mac)**. Only "verified" means it worked on Jacquez's Mac with real components._
 
 **Current version:** v0.1  
-**Last updated:** 2026-10-10 (Claude Code: recorded Jacquez's quick checks; every v0.1 item except the 30-turn benchmark and the quality test is now confirmed)  
+**Last updated:** 2026-10-10 (Claude Code: `small.en` downloaded and compared with `base.en` on synthesized speech; no code changed)  
 **What's left:** see [CHECKLIST.md](CHECKLIST.md), which covers the whole roadmap and lists each item as built or not, checked against the code.
 
 ## v0.1 — what exists
@@ -270,5 +270,25 @@ One run of a model that varies every time: these are observations, not rates.
 
 - Some breaks are awkward: "Break down big tasks into smaller, | manageable chunks"; "Practice in front of a mirror, | record yourself, and watch or listen".
 - After the build, three typed turns in a browser: first piece was a clause on two (first phrase 311 and 154 ms) and a sentence on one (359 ms).
+
+### 2026-10-10 — Whisper `base.en` vs `small.en` (two `whisper-server` instances on spare ports, 4 threads; 14 sentences × 2 synthesized voices (Samantha, Daniel) × 4 conditions = 112 clips each)
+`ggml-small.en.bin` (487,614,201 bytes) was downloaded from `huggingface.co/ggerganov/whisper.cpp` and its SHA-256 matched the published value. It is in `models/`, not in use by Q.
+
+| | base.en | base.en + hint | small.en | small.en + hint |
+|---|---|---|---|---|
+| Exact transcripts, normal volume | 23/28 | 26/28 | 25/28 | 28/28 |
+| Exact, 30 dB quieter | 21/28 | 26/28 | 23/28 | 26/28 |
+| Exact, quieter with noise | 11/28 | 13/28 | 17/28 | 20/28 |
+| Exact, first 0.3 s clipped | 0/28 | 0/28 | 2/28 | 2/28 |
+| Exact, all 112 | 55 (49%) | 65 (58%) | 67 (60%) | 76 (68%) |
+| Words wrong, all 112 | 17.3% | 12.8% | 13.5% | 8.0% |
+| Words wrong, quieter with noise | 27.6% | 21.8% | 19.2% | 7.7% |
+| Time per clip, median / p90 | 159 / 169 ms | 163 / 174 ms | 447 / 469 ms | 455 / 474 ms |
+| Memory held by the server | about 220–280 MB | | about 550–630 MB | |
+
+- `small.en` with the hint is the most accurate, and its biggest gain is in noise. It costs about 0.29 s more per turn and about 350 MB more memory, on a Mac that had 7.5 of 8.2 GB swap in use during the run.
+- The hint helps both models by a similar amount and costs nothing measurable.
+- A clipped start defeats both models: 0 and 2 exact out of 28. A bigger model does not fix that.
+- Jacquez's two real failures ("What time is it", "Tell me about Spider-Man") were transcribed correctly by both models in every condition except the clipped one, so they were not reproduced. A follow-up test put a key thump, a breath-like noise, a loud noise burst or 1.5 s of silence before the speech: both models were still 6 of 6 on every variant. The cause of his real-voice errors is not identified; synthesized speech does not stand in for his voice, mic and room.
 
 None of the speech-engine tables above are end-to-end numbers from Jacquez's browser. The cache benchmark (`scripts/bench-cache.mjs`) has not been run against real Ollama yet.
