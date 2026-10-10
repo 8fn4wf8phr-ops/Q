@@ -39,12 +39,19 @@ func int16Data(_ b: AVAudioPCMBuffer) -> Data {
   return samples.withUnsafeBufferPointer { Data(buffer: $0) }
 }
 
-// The end of an utterance is normally a zero-length buffer; the delegate
-// callback is a second signal in case a voice never sends one.
+// The end of an utterance is normally a zero-length buffer. The delegate
+// callback is only a backstop in case a voice never sends one: it arrives
+// late, often after the next utterance has started, so it is tied to its own
+// utterance and given a short grace period. Without that check it ended the
+// following sentence with no audio.
 final class Finish: NSObject, AVSpeechSynthesizerDelegate {
+  var current: AVSpeechUtterance?
   var onFinish: (() -> Void)?
-  func speechSynthesizer(_ s: AVSpeechSynthesizer, didFinish u: AVSpeechUtterance) { DispatchQueue.main.async { self.onFinish?() } }
-  func speechSynthesizer(_ s: AVSpeechSynthesizer, didCancel u: AVSpeechUtterance) { DispatchQueue.main.async { self.onFinish?() } }
+  private func ended(_ u: AVSpeechUtterance) {
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { if u === self.current { self.onFinish?() } }
+  }
+  func speechSynthesizer(_ s: AVSpeechSynthesizer, didFinish u: AVSpeechUtterance) { ended(u) }
+  func speechSynthesizer(_ s: AVSpeechSynthesizer, didCancel u: AVSpeechUtterance) { ended(u) }
 }
 let finishDelegate = Finish()
 synth.delegate = finishDelegate
@@ -64,10 +71,12 @@ func speak(id: Int, text: String, voiceId: String, done: @escaping () -> Void) {
   let finish = {
     if finished { return }
     finished = true
+    finishDelegate.current = nil
     finishDelegate.onFinish = nil
     send(["id": id, "sampleRate": Int(rate), "bytes": pcm.count, "ms": nowMs() - started, "voice": voice.name], pcm)
     done()
   }
+  finishDelegate.current = utterance
   finishDelegate.onFinish = finish
   synth.write(utterance) { buffer in
     guard let b = buffer as? AVAudioPCMBuffer else { return }
