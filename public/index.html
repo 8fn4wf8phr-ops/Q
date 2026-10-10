@@ -87,7 +87,12 @@
 
       <section class="glass card">
         <h2>Voice</h2>
+        <label class="field"><span>Voice engine</span><select id="engine">
+          <option value="say">macOS say (via server)</option>
+          <option value="browser">Browser speech (local voices only)</option>
+        </select></label>
         <label class="field"><span>Q's voice</span><select id="voice"></select></label>
+        <p class="hint" id="engineNote"></p>
         <label class="toggle"><input id="speak" type="checkbox" /><span>Speak replies out loud</span></label>
         <p class="hint">Edit <code>persona.md</code> to change how Q talks — it's re-read every turn.</p>
       </section>

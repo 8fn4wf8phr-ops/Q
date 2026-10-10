@@ -1,5 +1,5 @@
 import { QCore } from './core.js';
-import { Recorder, Player, blobToWav16k } from './audio.js';
+import { Recorder, Player, BrowserSpeaker, blobToWav16k } from './audio.js';
 
 const $ = (sel) => document.querySelector(sel);
 const els = {
@@ -23,6 +23,8 @@ const els = {
   history: $('#history'),
   historyNote: $('#historyNote'),
   voice: $('#voice'),
+  engine: $('#engine'),
+  engineNote: $('#engineNote'),
   speak: $('#speak'),
   empty: $('#empty'),
 };
@@ -37,7 +39,9 @@ const core = new QCore(els.canvas, { reducedMotion });
 core.start();
 
 const recorder = new Recorder();
-const player = new Player({
+// Two ways to speak, same callbacks: `player` plays WAVs the server made with
+// `say`; `speaker` uses the browser's own speech engine (local voices only).
+const speechEvents = {
   onStart: () => {
     if (turn && turn.tFirstAudio == null) { turn.tFirstAudio = performance.now(); renderLatency(); }
     setPhase('speaking');
@@ -47,7 +51,13 @@ const player = new Player({
     else finishTurn();
   },
   onError: (err) => console.warn('[q] playback', err),
-});
+};
+const player = new Player(speechEvents);
+const speaker = new BrowserSpeaker(speechEvents);
+const out = () => (S.engine === 'browser' ? speaker : player);
+const canSpeak = () => (S.engine === 'browser' ? speaker.available : !!S.status?.tts?.available);
+const stopSpeech = () => { player.stop(); speaker.stop(); synthChain = Promise.resolve(); };
+const unlockSpeech = () => { player.unlock(); if (S.engine === 'browser') speaker.unlock(); };
 
 const S = {
   phase: 'boot',
@@ -58,6 +68,8 @@ const S = {
   arming: null,
   speak: store.get('speak', true),
   voice: store.get('voice', ''),
+  engine: store.get('engine', 'say'),
+  browserVoice: store.get('browserVoice', ''),
   runs: store.get('runs', []),
 };
 let turn = null;
@@ -81,7 +93,7 @@ function setPhase(phase, detail) {
   S.phase = phase;
   const p = PHASES[phase];
   core.setState(p.core);
-  core.setLevelSource(phase === 'listening' ? recorder.getLevel : phase === 'speaking' ? player.getLevel : null);
+  core.setLevelSource(phase === 'listening' ? recorder.getLevel : phase === 'speaking' ? out().getLevel : null);
   els.stateText.textContent = p.label;
   els.statePill.dataset.kind = p.pill;
   els.stage.dataset.phase = phase;
@@ -149,11 +161,14 @@ function renderStatus() {
     : o.modelLoaded ? { kind: 'ok', text: 'Loaded' } : { kind: 'idle', text: 'Installed' };
   const meta = [o.parameterSize, o.quantization].filter(Boolean).join(' · ');
   const ears = s.stt.ready ? { kind: 'ok', text: s.stt.mode === 'server' ? 'Ready' : 'Ready (slow)' } : { kind: 'warn', text: 'Missing' };
-  const voice = s.tts.available ? { kind: 'ok', text: 'Ready' } : { kind: 'warn', text: 'Missing' };
+  const voice = canSpeak() ? { kind: 'ok', text: 'Ready' } : { kind: 'warn', text: 'Missing' };
+  const voiceRow = S.engine === 'browser'
+    ? row('Voice', 'Browser speech', voice, speaker.available ? `${speaker.pick().name} · local voice` : 'no local voice in this browser')
+    : row('Voice', s.tts.engine === 'say' ? 'macOS say' : s.tts.engine, voice, s.tts.available ? (S.voice || s.tts.defaultVoice || 'system default voice') : s.tts.error);
   els.status.innerHTML = [
     row('Brain', s.model, brain, meta || (o.reachable ? '' : 'start the Ollama app')),
     row('Ears', `whisper.cpp`, ears, s.stt.ready ? `${s.stt.model.replace(/^ggml-|\.bin$/g, '')} · ${s.stt.mode === 'server' ? 'kept loaded' : 'reloads each turn'}` : s.stt.error),
-    row('Voice', s.tts.engine === 'say' ? 'macOS say' : s.tts.engine, voice, s.tts.available ? (S.voice || s.tts.defaultVoice || 'system default voice') : s.tts.error),
+    voiceRow,
     row('Model memory', fmtBytes(o.loadedVramBytes), { kind: 'idle', text: o.modelLoaded ? 'Measured' : 'Not loaded' }, 'reported by Ollama'),
     row('Q server', fmtBytes(s.server.rssBytes), { kind: 'idle', text: 'Measured' }, `process RSS · pid ${s.server.pid}`),
   ].join('');
@@ -174,6 +189,20 @@ async function refreshStatus() {
 }
 
 async function loadVoices() {
+  els.engine.value = S.engine;
+  if (S.engine === 'browser') {
+    const voices = speaker.voices();
+    const def = voices.find((v) => v.name === 'Samantha') || voices[0];
+    els.voice.innerHTML = [`<option value="">${def ? `Default (${escapeHtml(def.name)})` : 'No local voice found'}</option>`]
+      .concat(voices.map((v) => `<option value="${escapeAttr(v.name)}">${escapeHtml(v.name)} · ${v.lang}</option>`)).join('');
+    els.voice.value = voices.some((v) => v.name === S.browserVoice) ? S.browserVoice : '';
+    els.voice.disabled = !voices.length;
+    els.engineNote.textContent = voices.length
+      ? 'Spoken by this browser using voices installed on this Mac. The core pulses on spoken words, not loudness.'
+      : 'This browser reports no local English voice, so Q stays silent in this mode.';
+    return;
+  }
+  els.engineNote.textContent = 'Each sentence is rendered by macOS say on the server, then played here. The core follows the audio’s loudness.';
   try {
     const { voices } = await (await fetch('/api/voices')).json();
     const def = S.status?.tts?.defaultVoice;
@@ -239,23 +268,32 @@ function takeSentences(buf) {
   return { sentences: out, rest: buf.slice(last) };
 }
 
+// `say` requests run one at a time: parallel `say` processes slow each other,
+// which delays the first sentence. Later ones still overlap playback.
+let synthChain = Promise.resolve();
+
 function speakSentence(text) {
-  if (!S.speak || !S.status?.tts?.available) return;
+  if (!S.speak || !canSpeak()) return;
   const t = turn;
   if (t && t.tFirstSentence == null) t.tFirstSentence = performance.now();
-  const sentAt = performance.now();
-  const p = fetch('/api/speak', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ text, voice: S.voice }),
-    signal: S.abort?.signal,
+  if (S.engine === 'browser') { speaker.enqueue(text); return; }
+  const signal = S.abort?.signal;
+  let sentAt;
+  const p = synthChain.then(() => {
+    sentAt = performance.now();
+    return fetch('/api/speak', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text, voice: S.voice }),
+      signal,
+    });
   }).then(async (r) => {
     if (r.status === 204) return null;
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `speak HTTP ${r.status}`);
     if (t && t.synthMs == null) t.synthMs = Number(r.headers.get('x-q-synth-ms')) || performance.now() - sentAt;
     return r.arrayBuffer();
   });
-  p.catch(() => {});
+  synthChain = p.then(() => {}, () => {});
   player.enqueue(p);
 }
 
@@ -325,7 +363,7 @@ async function runTurn(text) {
       meta: st ? `${st.evalTokens} tokens · ${st.tokPerSec ? st.tokPerSec.toFixed(1) : '—'} tok/s${coldMs(st) ? ` · cold start ${(coldMs(st) / 1000).toFixed(1)} s` : ''}` : '',
     });
     renderLatency();
-    if (!player.playing) finishTurn();
+    if (!out().playing) finishTurn();
   } catch (err) {
     if (err.name === 'AbortError') return;
     t.streamDone = true;
@@ -342,7 +380,7 @@ function finishTurn() {
     turn.recorded = true;
     const v2v = turn.tFirstAudio != null ? turn.tFirstAudio - turn.t0 : null;
     if (v2v != null) {
-      S.runs = [...S.runs, { v2v, source: turn.source, at: Date.now() }].slice(-12);
+      S.runs = [...S.runs, { v2v, source: turn.source, engine: S.engine, at: Date.now() }].slice(-12);
       store.set('runs', S.runs);
     }
     renderLatency();
@@ -357,7 +395,7 @@ function interrupt(reason = 'interrupted') {
   const wasBusy = ['transcribing', 'thinking', 'speaking'].includes(S.phase);
   S.abort?.abort();
   S.abort = null;
-  player.stop();
+  stopSpeech();
   if (turn && turn.userPushed && !turn.streamDone) {
     const b = turn.bubble;
     const partial = b?.querySelector('p')?.textContent || '';
@@ -384,7 +422,7 @@ async function pttDown() {
   if (!S.status?.stt?.ready) { fail('Speech-to-text isn’t set up yet — run npm run setup. You can still type.'); return; }
   interrupt();
   S.ptt = true;
-  player.unlock();
+  unlockSpeech();
   els.mic.classList.add('held');
   setPhase('arming');
   S.arming = recorder.start()
@@ -469,7 +507,7 @@ function renderHistory() {
   const max = Math.max(...runs.map((r) => r.v2v), 3000);
   els.history.innerHTML = runs.map((r) => {
     const v = verdict(r.v2v);
-    return `<span class="hbar" data-kind="${v.kind}" style="height:${Math.max(6, (r.v2v / max) * 100)}%" title="${fmtS(r.v2v)} · ${r.source}"></span>`;
+    return `<span class="hbar" data-kind="${v.kind}" style="height:${Math.max(6, (r.v2v / max) * 100)}%" title="${fmtS(r.v2v)} · ${r.source}${r.engine ? ` · ${r.engine}` : ''}"></span>`;
   }).join('');
   const sorted = runs.map((r) => r.v2v).sort((a, b) => a - b);
   const med = sorted[Math.floor(sorted.length / 2)];
@@ -506,15 +544,28 @@ els.form.addEventListener('submit', (e) => {
   if (!text) return;
   if (!ready()) { setPhase('offline', offlineReason()); return; }
   interrupt();
-  player.unlock();
+  unlockSpeech();
   els.input.value = '';
   turn = newTurn('text');
   runTurn(text);
 });
 
 els.speak.checked = S.speak;
-els.speak.addEventListener('change', () => { S.speak = els.speak.checked; store.set('speak', S.speak); if (!S.speak) player.stop(); });
-els.voice.addEventListener('change', () => { S.voice = els.voice.value; store.set('voice', S.voice); renderStatus(); });
+els.speak.addEventListener('change', () => { S.speak = els.speak.checked; store.set('speak', S.speak); if (!S.speak) stopSpeech(); });
+els.voice.addEventListener('change', () => {
+  if (S.engine === 'browser') { S.browserVoice = els.voice.value; store.set('browserVoice', S.browserVoice); speaker.voiceName = S.browserVoice; }
+  else { S.voice = els.voice.value; store.set('voice', S.voice); }
+  renderStatus();
+});
+els.engine.addEventListener('change', () => {
+  interrupt();
+  S.engine = els.engine.value;
+  store.set('engine', S.engine);
+  loadVoices().then(renderStatus);
+});
+speaker.voiceName = S.browserVoice;
+// Browsers fill their voice list late; redraw when it arrives.
+speaker.onVoices(() => { if (S.engine === 'browser') loadVoices().then(renderStatus); });
 
 function tickClock() {
   els.clock.textContent = new Date().toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });

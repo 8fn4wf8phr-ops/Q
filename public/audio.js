@@ -153,3 +153,106 @@ export class Player {
     this.playing = false;
   }
 }
+
+// Speaks sentences with the browser's own speech engine (Web Speech API), so
+// there is no process to start per sentence. Only voices the browser marks as
+// local are ever used: Chrome also lists network voices that would send the
+// text off this Mac, and an utterance with no voice set could pick one.
+// The audio never passes through Web Audio, so there is no loudness to read;
+// getLevel() pulses on the engine's real word-boundary events instead.
+export class BrowserSpeaker {
+  constructor({ onStart, onIdle, onError } = {}) {
+    this.onStart = onStart;
+    this.onIdle = onIdle;
+    this.onError = onError;
+    this.synth = window.speechSynthesis || null;
+    this.voiceName = '';
+    this.live = new Set(); // keeps utterances referenced until they end
+    this.playing = false;
+    this.speaking = false;
+    this.lastWord = 0;
+    this.gen = 0;
+    this.unlocked = false;
+  }
+
+  voices() {
+    if (!this.synth) return [];
+    return this.synth.getVoices().filter((v) => v.localService && v.lang.replace('_', '-').startsWith('en'));
+  }
+
+  onVoices(fn) { this.synth?.addEventListener('voiceschanged', fn); }
+
+  pick() {
+    const list = this.voices();
+    return list.find((v) => v.name === this.voiceName) || list.find((v) => v.name === 'Samantha') || list[0] || null;
+  }
+
+  get available() { return !!this.pick(); }
+
+  // Safari only lets speech start from a user gesture; a silent utterance
+  // during the key press or click opens it for the rest of the session.
+  unlock() {
+    const voice = this.pick();
+    if (this.unlocked || !voice) return;
+    this.unlocked = true;
+    const u = new SpeechSynthesisUtterance(' ');
+    u.voice = voice;
+    u.volume = 0;
+    this.synth.speak(u);
+  }
+
+  getLevel = () => {
+    if (!this.speaking) return 0;
+    return Math.max(0, 1 - (performance.now() - this.lastWord) / 260) * 0.85;
+  };
+
+  enqueue(text) {
+    const voice = this.pick();
+    if (!voice) { this.onError?.(new Error('no local voice available for browser speech')); return; }
+    const gen = this.gen;
+    const u = new SpeechSynthesisUtterance(text);
+    u.voice = voice;
+    u.lang = voice.lang;
+    const finish = () => {
+      if (!this.live.delete(u) || gen !== this.gen) return;
+      this.speaking = false;
+      if (!this.live.size) { this.playing = false; this.onIdle?.(); }
+    };
+    // Chrome fires `start` when speech is requested, before any sound. The
+    // first word-boundary event is when audio really begins, so that is what
+    // counts as started. A voice that sends no word events falls back to a
+    // fixed delay after `start`, which over-reports latency, never under.
+    let begun = false;
+    let fallback = null;
+    const begin = () => {
+      clearTimeout(fallback);
+      if (begun || gen !== this.gen) return;
+      begun = true;
+      this.speaking = true;
+      this.lastWord = performance.now();
+      this.onStart?.();
+    };
+    u.onstart = () => { fallback = setTimeout(begin, 500); };
+    u.onboundary = () => {
+      if (gen !== this.gen) return;
+      if (begun) this.lastWord = performance.now();
+      else begin();
+    };
+    u.onend = () => { clearTimeout(fallback); finish(); };
+    u.onerror = (e) => {
+      if (gen === this.gen && e.error !== 'interrupted' && e.error !== 'canceled') this.onError?.(new Error(`browser speech: ${e.error}`));
+      finish();
+    };
+    this.live.add(u);
+    this.playing = true;
+    this.synth.speak(u);
+  }
+
+  stop() {
+    this.gen++;
+    this.live.clear();
+    this.playing = false;
+    this.speaking = false;
+    this.synth?.cancel();
+  }
+}

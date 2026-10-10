@@ -3,7 +3,7 @@
 _Claude Code updates this after every change. Labels: **proposed → approved → built → tested (stand-ins) → verified (real Mac)**. Only "verified" means it worked on Jacquez's Mac with real components._
 
 **Current version:** v0.1  
-**Last updated:** 2026-10-10 (Claude Code: recorded Jacquez's first real-Mac results; warm-up state and Samantha default built)
+**Last updated:** 2026-10-10 (Claude Code: browser speech engine built as a selectable option; persistent speech helper timed as a throwaway spike, not built)
 
 ## v0.1 — what exists
 | Feature | State |
@@ -20,6 +20,8 @@ _Claude Code updates this after every change. Labels: **proposed → approved �
 | Whole pipeline on the real Mac | first runs 2026-10-10; test conditions (browser, VS Code load, power) not recorded |
 | "Warming up" state until the startup model load finishes; a turn that waits on it is timed (`warmupWaitMs`) and labelled cold; warm-up now loads with the same `num_ctx` as chat (D-020) | tested (stand-ins): fake Ollama with a slow and a failing load, checked through the API and in a browser; **not yet run on the real pipeline** |
 | Samantha is the default voice when none is chosen, falling back to the system voice if she isn't installed; the Voice panel names the real default (D-018) | tested (stand-ins): `/api/status` and `/api/speak` on this Mac with a fake Ollama; **not yet confirmed in a real turn** |
+| Voice engine selector: "Browser speech (local voices only)" next to "macOS say"; browser speech never uses a non-local voice; the core pulses on real word events; "first audio" is the first word event, not the browser's early `start` event. Default engine is still `say` (D-019) | tested (stand-ins): fake Ollama, typed turns in Claude's built-in Chromium on this Mac, including interrupt and switch; **not yet run in Jacquez's browser or with the mic** |
+| `say` sentences are now synthesized one at a time instead of in parallel | tested (stand-ins): one typed turn; **effect on real latency not measured** |
 | `scripts/bench-cache.mjs`: prompt-cache benchmark through `/api/chat` (back-to-back vs `--gap 61`), timings only | tested (stand-ins): ran against a fake Ollama stub; **not run** against real Ollama |
 
 ## Known issues — fix before benchmarking
@@ -27,7 +29,10 @@ _Claude Code updates this after every change. Labels: **proposed → approved �
 2. **Instrumentation gaps for the v0.1 gate:** no p90, no swap or memory-pressure sampling (must come from the server), no cold vs warm split, no "Copy run data" export. The metric should be labeled "key release → first audio". The export must contain timings only, no transcripts or audio.
 3. **Whisper hallucinations on near-silent clips** (e.g. "Thank you."): only a 300 ms minimum exists; add a loudness check.
 4. **Push-to-talk only works while the browser tab is focused** (expected until v0.3).
-5. **Voice synthesis is the main bottleneck.** Each sentence spawns a new `say` process, which costs 1.3–4 s before any audio exists, regardless of sentence length. _(measured 2026-10-10; not yet fixed)_
+5. **Voice synthesis is the main bottleneck.** Each sentence spawns a new `say` process, which costs 1.3–4 s before any audio exists, regardless of sentence length. _(measured 2026-10-10; browser speech built as an alternative, `say` still the default)_
+   - Browser speech has no ground truth for when sound starts: Chrome's `start` event fires on request (4–30 ms), about 100 ms before the first word event. Q times from the first word event; a voice with no word events falls back to `start` + 500 ms, which over-reports.
+   - The first browser-speech sentence after a page load was slower (0.41 s) than later ones.
+   - Chrome is known to drop speech queued right after a cancel; not seen in testing, worth watching for after interrupts.
 6. **The system default voice is much slower than Samantha** (about 4–7 s vs 1.3–2.4 s per sentence). _(Samantha default built 2026-10-10; needs a real-Mac check)_
 7. **Truthfulness bug: "Ready" is shown while the startup warm-up is still running.** The first question waits for it (first token 11.5 s observed) and the panel labels that turn "warm" because it only reads the chat request's own load time. _(found by Jacquez 2026-10-10; fix built, needs a real-Mac check: restart, ask at once, expect "Warming up" then a cold-labelled turn)_
    - Not covered: if Ollama unloads the model later (after `keepAlive`), Q still shows "Ready"; that turn is labelled cold from its own load time, and the Brain badge says "Installed" instead of "Loaded".
@@ -69,4 +74,11 @@ _Claude Code updates this after every change. Labels: **proposed → approved �
 | Samantha, 3 sentences synthesized in parallel | 2.99 s for all three — parallel `say` processes slow each other |
 | System default voice, same sentence, 3 runs | 3.81, 6.94, 4.18 s |
 
-The cache benchmark (`scripts/bench-cache.mjs`) has not been run against real Ollama yet.
+### 2026-10-10 — speech engine comparison, run by Claude Code on this Mac (Samantha; stand-in Ollama, so only the speech stage is real)
+| Engine | Time from sentence ready to first audio | Notes |
+|---|---|---|
+| `say` per sentence (current default) | 1.86–2.07 s in the test UI; 1.3–2.4 s standalone | new process every sentence |
+| Browser speech, Claude's built-in Chromium 152 | 0.04–0.41 s in the test UI; first word event 109–179 ms after the request in a direct test (3 runs + a one-word run) | 11 word events for an 11-word sentence; all 180 voices this browser lists are local |
+| Persistent Swift helper (`AVSpeechSynthesizer.write`), throwaway spike outside the repo, 2 runs × 5 sentences | first audio buffer 13–19 ms; whole sentence rendered in 23–44 ms | first sentence after the process starts: 478 and 828 ms, once; returns PCM, so the core's loudness meter would keep working |
+
+None of these are end-to-end numbers from Jacquez's browser. The cache benchmark (`scripts/bench-cache.mjs`) has not been run against real Ollama yet.
