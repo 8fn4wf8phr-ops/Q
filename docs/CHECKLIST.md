@@ -11,21 +11,21 @@ Covers the whole roadmap in `BRIEF.md`, v0.1 through v1.1+. v0.1 is itemised bec
 ## Summary
 | # | Item | Built | Confirmed on the real Mac |
 |---|---|---|---|
-| 1 | Voice-speed fix | Done | Partly: speed confirmed; the dropped-sentence fix is not yet heard |
+| 1 | Voice-speed fix | Done | Done |
 | 2 | Timestamp fix | Done | Done |
-| 3 | Warm-up "Ready" truthfulness bug | Done (second fix after a failed real test) | Not done: re-test after restarting Q |
-| 4 | Silence guard | Done | Not done: needs calibrating on the real mic |
+| 3 | Warm-up "Ready" truthfulness bug | Done (second fix after a failed real test) | Done |
+| 4 | Silence guard | Done | Done (threshold kept at −50 dB; silent-hold levels not written down) |
 | 5 | Run-data export | Done | Done |
 | 6 | ~30-turn benchmark | Not done | — |
 | 7 | New persona is in | Done | Done |
 
-## 1. Voice-speed fix — built, partly confirmed
+## 1. Voice-speed fix — done and confirmed
 - [x] Speech helper is the default voice path (`server.js`: `tts: 'helper'`; `speech/q-speak.swift`; `bin/q-speak` is built on this Mac).
 - [x] Falls back to `say` if the helper is missing or stops, and says so in the System panel.
 - [x] Samantha is the default voice.
 - [x] Confirmed: one real voice turn by Jacquez, voice synth 0.21 s (was 3.40 s).
 - [x] Fixed a helper bug that could return a sentence with no audio when requests came back to back (`speech/q-speak.swift`; 40 of 40 queued runs and 120 of 120 sequential sentences at full length after the fix).
-- [ ] After a restart, hear a reply of three or more sentences with none missing.
+- [x] After a restart, a reply of three or more sentences played with none missing (Jacquez, 2026-10-10).
 
 ## 2. Timestamp fix — done and confirmed
 - [x] The time is no longer in the system prompt; each user message carries the time it was sent (`server.js` `stamped()`, `public/app.js` `at: Date.now()`).
@@ -34,19 +34,19 @@ Covers the whole roadmap in `BRIEF.md`, v0.1 through v1.1+. v0.1 is itemised bec
 - [x] Benchmarked on real Ollama: first token when every turn crosses a minute went from 0.61–1.85 s to 0.34–0.85 s.
 - [x] Seen in real voice turns by Jacquez, 2026-10-10: "Prompt processing 0.23 s · 949 tokens" on a warm turn.
 
-## 3. Warm-up "Ready" truthfulness bug — built, not confirmed
+## 3. Warm-up "Ready" truthfulness bug — done and confirmed
 - [x] Server tracks the warm-up and reports it (`server.js` `warm`, `warmupWaitMs`).
 - [x] UI shows "Warming up" and labels a turn that waited on it as cold (`public/app.js`).
 - [x] Real check by Jacquez, 2026-10-10: **failed**. After quitting and reopening Ollama, Q showed "Ready" while Brain said "Installed", and the first turn paid the load plus 3.39 s of prompt processing.
 - [x] Fix: the warm-up re-runs whenever the model isn't in memory, and primes the real system prompt (`server.js` `warmIfNeeded()`, `warmModel()`). Cold first turn went from 3.2–5.1 s to 0.32–0.38 s in the benchmark.
 - [x] Q-restart path confirmed in Jacquez's export, 2026-10-10: first turn after the restart processed its prompt in 0.36 s.
-- [ ] Re-test the Ollama path: quit and reopen Ollama with Q running. Expect "Warming up" within about 8 seconds, then a fast first turn.
+- [x] Ollama path re-tested by Jacquez, 2026-10-10: passed ("Warming up" shown after quitting and reopening Ollama, then a fast turn).
 
-## 4. Silence guard — built, not confirmed
+## 4. Silence guard — done and confirmed
 - [x] Near-silent recordings skip Whisper (`public/level.js` `measureLevel()`, used in `public/audio.js` and `public/app.js`).
 - [x] `npm test` passes: silence, low noise and clicks are rejected; real synthesized speech turned down 20 and 30 dB is accepted.
-- [ ] Calibrate on the real microphone: a few silent holds and a few quiet sentences, then set the threshold from the levels Q reports.
-- [ ] Confirm a silent hold no longer produces a phantom reply.
+- [x] Checked on the real microphone, 2026-10-10: real speech peaked between −27 and −6 dB in ten exported turns, well above the −50 dB threshold, so the threshold stays. The exact levels of the silent holds were not recorded.
+- [x] Silent holds are skipped with no phantom reply (Jacquez, 2026-10-10).
 
 ## 5. Run-data export — done and confirmed
 - [x] p50 and p90, warm and cold separately; p90 from 10 turns up (`public/stats.js`).
@@ -90,7 +90,7 @@ Nothing here is finished. Some of it was started early while fixing v0.1.
 - [x] Speed: persistent speech helper (D-021) and stable prompt prefix (D-006, D-022) are in the code.
 - [ ] Speed: first turn after a few idle minutes is slow because macOS compresses the model's memory. Measured, no fix chosen (D-014).
 - [x] Speed: Q can start speaking at the first clause instead of the first full sentence (`public/chunk.js`, D-025); about 0.5 s sooner on roughly half of replies in a 30-prompt test.
-- [ ] Listen to first-clause speech and decide whether the breaks sound natural enough to keep on.
+- [x] First-clause speech heard by Jacquez, 2026-10-10: keep it on.
 - [ ] Speed: the first words can be clipped because the mic opens fresh on every press.
 - [ ] Continuity within a conversation is limited to the last 4–8 turns (`trimHistory()`); nothing carries across sessions.
 - [ ] Blind pairwise quality evaluation (D-008). Not started; no prompts, no harness.
