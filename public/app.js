@@ -447,7 +447,16 @@ async function pttUp() {
   t.captureMs = result.durationMs;
   setPhase('transcribing');
   try {
-    const wav = await blobToWav16k(result.blob);
+    const { wav, level } = await blobToWav16k(result.blob);
+    t.level = level;
+    console.info('[q] input level', level);
+    if (!level.hasSpeech) {
+      // Near-silent clip: Whisper would invent words, so it isn't asked.
+      turn = null;
+      settle();
+      els.stateDetail.textContent = `Didn’t hear anything (loudest ${fmtDb(level.peakDb)}) — try again`;
+      return;
+    }
     const tSent = performance.now();
     const r = await fetch('/api/transcribe', { method: 'POST', headers: { 'content-type': 'audio/wav' }, body: wav });
     const data = await r.json();
@@ -468,6 +477,7 @@ async function pttUp() {
 // ---------- latency panel ----------
 
 const fmtS = (ms) => (ms == null ? '—' : `${(ms / 1000).toFixed(2)} s`);
+const fmtDb = (db) => (Number.isFinite(db) ? `${db.toFixed(0)} dB` : 'silence');
 // Cold = the model was loaded for this turn, or the turn waited on the startup warm-up.
 const coldMs = (st) => (st.loadMs > 300 ? st.loadMs : 0) + (st.warmupWaitMs || 0);
 function verdict(ms) {
@@ -503,7 +513,8 @@ function renderLatency() {
     + `<div class="lrow plain"><span></span><span>Prompt processing</span><b>${st ? `${fmtS(st.promptMs)} · ${st.promptTokens} tokens` : '—'}</b></div>`
     + `<div class="lrow plain"><span></span><span>Generation speed</span><b>${st?.tokPerSec ? `${st.tokPerSec.toFixed(1)} tok/s` : '—'}</b></div>`
     + `<div class="lrow plain"><span></span><span>Model load this turn</span><b>${st ? (coldMs(st) ? `${(coldMs(st) / 1000).toFixed(1)} s (cold${st.warmupWaitMs ? ', waited on warm-up' : ''})` : 'warm') : '—'}</b></div>`
-    + (t.source === 'voice' ? `<div class="lrow plain"><span></span><span>You spoke for</span><b>${fmtS(t.captureMs)}</b></div>` : '');
+    + (t.source === 'voice' ? `<div class="lrow plain"><span></span><span>You spoke for</span><b>${fmtS(t.captureMs)}</b></div>` : '')
+    + (t.level ? `<div class="lrow plain"><span></span><span>Input level</span><b>${fmtDb(t.level.peakDb)} · ${fmtS(t.level.loudMs)} of sound</b></div>` : '');
 }
 
 function renderHistory() {

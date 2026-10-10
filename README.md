@@ -73,6 +73,7 @@ server.js          local server: /api/transcribe, /api/chat (streamed), /api/spe
 persona.md         Q's personality (system prompt)
 public/core.js     the Q core renderer (Canvas 2D, ~30 fps when idle, honors Reduce Motion)
 public/audio.js    push-to-talk capture → 16 kHz WAV, and ordered sentence playback
+public/level.js    loudness check that skips Whisper on near-silent recordings (npm test covers it)
 public/app.js      state machine, streaming, timing
 speech/q-speak.swift  speech helper source (compiled to bin/q-speak, which is not checked in)
 Start Q.command    double-click launcher (checks Ollama, runs npm start, opens the page)

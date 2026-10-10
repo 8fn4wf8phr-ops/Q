@@ -1,5 +1,7 @@
 // Microphone capture (push-to-talk) and ordered sentence-by-sentence playback.
 
+import { measureLevel } from './level.js';
+
 const AC = window.AudioContext || window.webkitAudioContext;
 
 function rms(analyser, buf) {
@@ -56,7 +58,8 @@ export class Recorder {
 }
 
 // Decode whatever the browser recorded and resample to 16 kHz mono 16-bit WAV,
-// the format whisper.cpp expects.
+// the format whisper.cpp expects. Also measures how loud the clip was, so the
+// caller can skip Whisper when nobody spoke.
 export async function blobToWav16k(blob) {
   const ctx = new AC();
   const decoded = await ctx.decodeAudioData(await blob.arrayBuffer());
@@ -68,7 +71,8 @@ export async function blobToWav16k(blob) {
   src.connect(off.destination);
   src.start();
   const rendered = await off.startRendering();
-  return encodeWav(rendered.getChannelData(0), rate);
+  const samples = rendered.getChannelData(0);
+  return { wav: encodeWav(samples, rate), level: measureLevel(samples, rate) };
 }
 
 function encodeWav(samples, rate) {
