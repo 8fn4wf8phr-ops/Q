@@ -35,7 +35,7 @@ After setup, you can turn Wi-Fi off and Q still works.
 
 ## How to read the Latency panel
 
-**Voice to voice** is the time from letting go of Space to hearing Q's first word.
+**Key release → first audio** is the time from letting go of Space to hearing Q's first word. (Typed turns are timed from Enter and kept out of the statistics.)
 
 - under 1.5 s: feels live
 - 1.5–3 s: noticeable
@@ -47,6 +47,8 @@ The bar breaks that time into four stages:
 - **First token**: the model starting to reply (watch for a cold start on the first turn).
 - **First sentence**: the model finishing its first sentence. Q starts speaking after one sentence, not after the whole reply.
 - **Voice synth**: the macOS voice rendering that sentence to audio.
+
+Under the bars, the panel shows p50 and p90 for warm and cold voice turns separately (p90 appears once a group has ten turns). **Copy run data** puts the timings for up to the last 200 turns on the clipboard as JSON, with memory and power figures sampled by the server: numbers only, never what was said. **Clear** deletes the stored timings.
 
 Try it with VS Code and your browser open too, because that's how you'll actually use it.
 
@@ -73,6 +75,7 @@ server.js          local server: /api/transcribe, /api/chat (streamed), /api/spe
 persona.md         Q's personality (system prompt)
 public/core.js     the Q core renderer (Canvas 2D, ~30 fps when idle, honors Reduce Motion)
 public/audio.js    push-to-talk capture → 16 kHz WAV, and ordered sentence playback
+public/stats.js    p50/p90, cold vs warm, and the run-data export (npm test covers it)
 public/level.js    loudness check that skips Whisper on near-silent recordings (npm test covers it)
 public/app.js      state machine, streaming, timing
 speech/q-speak.swift  speech helper source (compiled to bin/q-speak, which is not checked in)

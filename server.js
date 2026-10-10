@@ -42,6 +42,7 @@ const DEFAULTS = {
 };
 
 const CONFIG = await loadConfig();
+const VERSION = await readFile(path.join(ROOT, 'package.json'), 'utf8').then((t) => JSON.parse(t).version).catch(() => null);
 let stopping = false;
 
 async function loadConfig() {
@@ -518,6 +519,62 @@ async function streamChat(req, res) {
   res.end();
 }
 
+// ---------- system sample (for run data) ----------
+// Memory and power figures recorded next to each turn's timings. Every command
+// is fixed, with fixed arguments; nothing here is built from request data.
+
+const MB = 1024 * 1024;
+
+async function systemSample() {
+  const opts = { timeoutMs: 3000 };
+  const [swap, level, vm, ps, batt] = await Promise.all([
+    run('/usr/sbin/sysctl', ['-n', 'vm.swapusage'], opts),
+    run('/usr/sbin/sysctl', ['-n', 'kern.memorystatus_vm_pressure_level'], opts),
+    run('/usr/bin/vm_stat', [], opts),
+    run('/bin/ps', ['-axo', 'rss=,comm='], opts),
+    run('/usr/bin/pmset', ['-g', 'batt'], opts),
+  ]);
+  const swapMb = (label) => {
+    const m = swap.stdout.match(new RegExp(`${label} = ([\\d.]+)([KMG])`));
+    return m ? Number(m[1]) * { K: 1 / 1024, M: 1, G: 1024 }[m[2]] : null;
+  };
+  const pageBytes = Number(vm.stdout.match(/page size of (\d+) bytes/)?.[1]) || 16384;
+  const pagesMb = (label) => {
+    const m = vm.stdout.match(new RegExp(`${label}:\\s+(\\d+)`));
+    return m ? (Number(m[1]) * pageBytes) / MB : null;
+  };
+  let ollamaMb = 0;
+  let whisperMb = 0;
+  let helperMb = 0;
+  let vscodeRunning = false;
+  for (const line of ps.stdout.split('\n')) {
+    const m = line.match(/^\s*(\d+)\s+(.+)$/);
+    if (!m) continue;
+    const mb = Number(m[1]) / 1024;
+    if (/ollama/i.test(m[2])) ollamaMb += mb;
+    else if (/whisper-server$/.test(m[2])) whisperMb += mb;
+    else if (/q-speak$/.test(m[2])) helperMb += mb;
+    if (m[2].includes('Visual Studio Code.app')) vscodeRunning = true;
+  }
+  return {
+    swapUsedMb: swapMb('used'),
+    swapTotalMb: swapMb('total'),
+    freeMb: pagesMb('Pages free'),
+    compressedMb: pagesMb('Pages occupied by compressor'),
+    // Running totals since boot; the page turns them into per-turn differences.
+    decompressedTotalMb: pagesMb('Decompressions'),
+    pageinsTotalMb: pagesMb('Pageins'),
+    swapinsTotalMb: pagesMb('Swapins'),
+    pressure: { 1: 'normal', 2: 'warning', 4: 'critical' }[Number(level.stdout.trim())] ?? null,
+    ollamaMb,
+    whisperMb,
+    helperMb,
+    serverMb: process.memoryUsage().rss / MB,
+    power: /AC Power/.test(batt.stdout) ? 'ac' : /Battery Power/.test(batt.stdout) ? 'battery' : null,
+    vscodeRunning,
+  };
+}
+
 // ---------- HTTP plumbing ----------
 
 function readBody(req, limit) {
@@ -566,7 +623,9 @@ const server = http.createServer(async (req, res) => {
   try {
     if (req.method === 'GET' && pathname === '/api/status') {
       return json(res, 200, {
+        version: VERSION,
         model: CONFIG.model,
+        history: { turns: CONFIG.historyTurns, chars: CONFIG.historyChars },
         ollama: await ollamaStatus(),
         warmup: { state: warm.state, ms: warm.ms, error: warm.error },
         stt: { mode: stt.mode, ready: stt.mode === 'cli' || (stt.mode === 'server' && stt.serverReady), model: path.basename(CONFIG.whisperModel), error: stt.mode === 'none' ? stt.lastError : null },
@@ -574,6 +633,7 @@ const server = http.createServer(async (req, res) => {
         server: { host: '127.0.0.1', port: CONFIG.port, pid: process.pid, rssBytes: process.memoryUsage().rss },
       });
     }
+    if (req.method === 'GET' && pathname === '/api/system') return json(res, 200, await systemSample());
     if (req.method === 'GET' && pathname === '/api/voices') return json(res, 200, { engine: tts.engine, voices: tts.voices });
     if (req.method === 'POST' && pathname === '/api/warm') {
       const w = await (warm.state === 'warming' ? warm.promise : startWarmup());

@@ -3,8 +3,8 @@
 _Claude Code updates this after every change. Labels: **proposed → approved → built → tested (stand-ins) → verified (real Mac)**. Only "verified" means it worked on Jacquez's Mac with real components._
 
 **Current version:** v0.1  
-**Last updated:** 2026-10-10 (Claude Code: Whisper vocabulary hint built; speech-helper bug that dropped queued sentences found and fixed; silence guard still uncalibrated; all uncommitted)  
-**What's left for v0.1:** see [CHECKLIST.md](CHECKLIST.md), which lists each item as built or not, checked against the code.
+**Last updated:** 2026-10-10 (Claude Code: run-data export built; checklist extended to the whole roadmap; both uncommitted)  
+**What's left:** see [CHECKLIST.md](CHECKLIST.md), which covers the whole roadmap and lists each item as built or not, checked against the code.
 
 ## v0.1 — what exists
 | Feature | State |
@@ -14,10 +14,15 @@ _Claude Code updates this after every change. Labels: **proposed → approved �
 | whisper-server stays loaded between turns (falls back to whisper-cli) | tested (stand-ins) |
 | Q Core Canvas animation tied to real mic, inference and playback events; ~30 fps idle; Reduce Motion | tested (stand-ins) |
 | Interrupt via Esc, the Stop button or clicking the core; typed input fallback | tested (stand-ins) |
-| Latency panel: per-stage times, voice-to-voice, median of last 12 turns | tested (stand-ins) |
+| Latency panel: per-stage times, voice-to-voice, median of last 12 turns | tested (stand-ins); superseded 2026-10-10 by the rows below |
+| Main metric is "Key release → first audio", timed from key release (typed turns: "Enter → first audio", kept out of the statistics) | built; typed turns checked in Claude's built-in Chromium; **the key-release timing needs a real voice turn** |
+| Every finished turn is stored as numbers only (stages, prompt time and size, load, warm-up wait, cold flag, idle time since the previous turn, input level, turn number), up to 200 turns; a turn interrupted while speaking a finished reply is kept | tested: two typed turns on the real model, 2026-10-10; no message text in storage |
+| p50 and p90 for warm and cold voice turns, p90 only from 10 turns up (`public/stats.js`) | tested: `npm test` (23 cases) and the panel with 14 injected turns; **no real voice turns yet** |
+| Server sample per turn (`/api/system`): swap, memory pressure, free and compressed memory, decompressed/paged-in since the previous turn, process memory, power source, whether VS Code is running | run on this Mac 2026-10-10 and matched against the same commands by hand; takes about 40 ms, requested after first audio |
+| "Copy run data" and "Clear" buttons; the export is built from an allowlist of numeric fields (D-007) | tested: `npm test` plants message text and checks none comes out; export checked in Claude's built-in Chromium through the fallback text box; **the clipboard path itself has not run (that browser blocks it); try it in Chrome** |
 | System panel: model, speech and voice status; Ollama model memory; server process memory | tested (stand-ins) |
 | `persona.md` re-read every turn; last 8 turns of context | tested (stand-ins) |
-| Example-driven persona written by Jacquez (short first sentence, no assistant-speak, wider "can't do yet" list, twelve example exchanges), applied unchanged in `21c0809` | one ten-turn typed run on the real model 2026-10-10 (see Measurements); **not yet heard in a voice turn; no blind quality test** |
+| Example-driven persona written by Jacquez (short first sentence, no assistant-speak, wider "can't do yet" list, twelve example exchanges), applied unchanged in `21c0809` | one ten-turn typed run on the real model 2026-10-10 (see Measurements); **confirmed working by Jacquez 2026-10-10**; no blind quality test |
 | `npm run setup` (whisper-cpp, base.en model, llama3.2:3b) | run by Jacquez (Ollama 0.40.2 and whisper.cpp present 2026-10-10) |
 | Whole pipeline on the real Mac | first runs 2026-10-10; test conditions (browser, VS Code load, power) not recorded |
 | "Warming up" state until the startup model load finishes; a turn that waits on it is timed (`warmupWaitMs`) and labelled cold; warm-up now loads with the same `num_ctx` as chat (D-020) | tested (stand-ins): fake Ollama with a slow and a failing load, checked through the API and in a browser; **not yet run on the real pipeline** |
@@ -37,7 +42,12 @@ _Claude Code updates this after every change. Labels: **proposed → approved �
 
 ## Known issues — fix before benchmarking
 1. **(Fix built 2026-10-10, see Measurements.)** **Timestamp breaks Ollama's prompt cache.** `server.js` puts the current time, to the minute, into the system prompt, so the persona and history are reprocessed after every minute change and latency comes out inflated. Use the date or hour, or put the time in the latest message. _(found by Claude Chat; not yet fixed)_
-2. **Instrumentation gaps for the v0.1 gate:** no p90, no swap or memory-pressure sampling (must come from the server), no cold vs warm split, no "Copy run data" export. The metric should be labeled "key release → first audio". The export must contain timings only, no transcripts or audio.
+2. **(Built 2026-10-10.)** **Instrumentation gaps for the v0.1 gate:** no p90, no swap or memory-pressure sampling (must come from the server), no cold vs warm split, no "Copy run data" export. The metric should be labeled "key release → first audio". The export must contain timings only, no transcripts or audio.
+   - Turns interrupted before the reply finished generating are not recorded.
+   - The first turn after a page load has no "since the previous turn" memory figures.
+   - `ollamaMb` is the Ollama processes' own memory and does not include the model, which lives in graphics memory; the model's size is in the export header from Ollama's own figure.
+   - The 12 turns stored in the old format are dropped on first load of the new page.
+   - "First audio" is still when playback is scheduled, not when sound leaves the speaker.
 3. **Whisper hallucinations on near-silent clips** (e.g. "Thank you."): only a 300 ms minimum exists; add a loudness check. _(silence guard built 2026-10-10; needs calibrating on the real mic)_
    - The -50 dBFS threshold has not been checked against Jacquez's microphone, which runs with automatic gain control. To calibrate: a few silent holds and a few quiet sentences, then read the levels Q reports.
    - Synthesized speech turned down 40 dB (loudest frame about -52 dB) is rejected; that is the current lower limit for quiet speech.

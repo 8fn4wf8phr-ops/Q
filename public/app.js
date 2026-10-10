@@ -1,5 +1,6 @@
 import { QCore } from './core.js';
 import { Recorder, Player, BrowserSpeaker, blobToWav16k } from './audio.js';
+import { SCHEMA, MAX_RUNS, MIN_FOR_P90, summarize, buildExport } from './stats.js';
 
 const $ = (sel) => document.querySelector(sel);
 const els = {
@@ -23,6 +24,11 @@ const els = {
   history: $('#history'),
   historyNote: $('#historyNote'),
   voice: $('#voice'),
+  v2vLabel: $('#v2vLabel'),
+  copyRuns: $('#copyRuns'),
+  clearRuns: $('#clearRuns'),
+  copyNote: $('#copyNote'),
+  runData: $('#runData'),
   engine: $('#engine'),
   engineNote: $('#engineNote'),
   speak: $('#speak'),
@@ -43,7 +49,7 @@ const recorder = new Recorder();
 // `say`; `speaker` uses the browser's own speech engine (local voices only).
 const speechEvents = {
   onStart: () => {
-    if (turn && turn.tFirstAudio == null) { turn.tFirstAudio = performance.now(); renderLatency(); }
+    if (turn && turn.tFirstAudio == null) { turn.tFirstAudio = performance.now(); renderLatency(); sampleSystem(turn); }
     setPhase('speaking');
   },
   onIdle: () => {
@@ -70,7 +76,7 @@ const S = {
   voice: store.get('voice', ''),
   engine: store.get('engine', 'say'),
   browserVoice: store.get('browserVoice', ''),
-  runs: store.get('runs', []),
+  runs: store.get('runs', []).filter((r) => r && r.v === SCHEMA), // older entries lack the per-stage fields
 };
 let turn = null;
 
@@ -303,8 +309,25 @@ function speakSentence(text) {
 
 // ---------- a turn ----------
 
-function newTurn(source) {
-  return { source, t0: performance.now(), streamDone: false };
+// t0 is key release for voice turns and Enter for typed ones.
+let lastTurnEnd = null;
+function newTurn(source, t0 = performance.now()) {
+  return { source, t0, streamDone: false, idleMs: lastTurnEnd == null ? null : t0 - lastTurnEnd };
+}
+
+// Memory and power figures for the run data, fetched once per turn after audio
+// has started so the sample itself never delays Q's reply.
+let prevSys = null;
+async function sampleSystem(t) {
+  if (t.sysAsked) return;
+  t.sysAsked = true;
+  try {
+    const now = await (await fetch('/api/system')).json();
+    const since = (key) => (prevSys && now[key] != null && prevSys[key] != null ? now[key] - prevSys[key] : null);
+    t.sys = { ...now, decompressedMb: since('decompressedTotalMb'), pageinsMb: since('pageinsTotalMb'), swapinsMb: since('swapinsTotalMb') };
+    prevSys = now;
+    if (t.run) { t.run.sys = t.sys; store.set('runs', S.runs); }
+  } catch { /* the run is still recorded, without a system sample */ }
 }
 
 async function runTurn(text) {
@@ -380,19 +403,49 @@ async function runTurn(text) {
 function finishTurn() {
   if (!turn) { if (['speaking', 'thinking'].includes(S.phase)) settle(); return; }
   if (!turn.streamDone) return;
-  if (!turn.recorded) {
-    turn.recorded = true;
-    const v2v = turn.tFirstAudio != null ? turn.tFirstAudio - turn.t0 : null;
-    if (v2v != null) {
-      S.runs = [...S.runs, { v2v, source: turn.source, engine: S.engine === 'browser' ? 'browser' : (S.status?.tts?.engine ?? 'say'), at: Date.now() }].slice(-12);
-      store.set('runs', S.runs);
-    }
-    renderLatency();
-    renderHistory();
-  }
+  recordTurn(turn);
   turn = null;
   S.abort = null;
   settle();
+}
+
+// Numbers only: nothing said or heard is ever stored here.
+function recordTurn(t) {
+  if (t.recorded) return;
+  t.recorded = true;
+  const st = t.stats || {};
+  const heardAt = t.source === 'voice' ? t.tStt : t.t0;
+  const span = (to, from) => (to != null && from != null ? to - from : null);
+  t.run = {
+    v: SCHEMA,
+    at: Date.now(),
+    source: t.source,
+    engine: S.engine === 'browser' ? 'browser' : (S.status?.tts?.engine ?? 'say'),
+    cold: coldMs(st) > 0,
+    total: span(t.tFirstAudio, t.t0),
+    stt: t.source === 'voice' ? span(t.tStt, t.t0) : null,
+    firstToken: span(t.tFirstToken, heardAt),
+    firstSentence: span(t.tFirstSentence, t.tFirstToken),
+    voiceSynth: span(t.tFirstAudio, t.tFirstSentence),
+    promptMs: st.promptMs ?? null,
+    promptTokens: st.promptTokens ?? null,
+    loadMs: st.loadMs ?? null,
+    warmupWaitMs: st.warmupWaitMs ?? null,
+    evalTokens: st.evalTokens ?? null,
+    tokPerSec: st.tokPerSec ?? null,
+    captureMs: t.captureMs ?? null,
+    levelDb: t.level?.peakDb ?? null,
+    loudMs: t.level?.loudMs ?? null,
+    turnIndex: S.messages.filter((m) => m.role === 'user').length,
+    idleMs: t.idleMs,
+    sys: t.sys ?? null,
+  };
+  S.runs = [...S.runs, t.run].slice(-MAX_RUNS);
+  store.set('runs', S.runs);
+  lastTurnEnd = performance.now();
+  sampleSystem(t);
+  renderLatency();
+  renderHistory();
 }
 
 function interrupt(reason = 'interrupted') {
@@ -400,6 +453,8 @@ function interrupt(reason = 'interrupted') {
   S.abort?.abort();
   S.abort = null;
   stopSpeech();
+  // Cut off while speaking a finished reply: its timings are complete, keep them.
+  if (turn && turn.streamDone && turn.stats && turn.tFirstAudio != null) recordTurn(turn);
   if (turn && turn.userPushed && !turn.streamDone) {
     const b = turn.bubble;
     const partial = b?.querySelector('p')?.textContent || '';
@@ -436,13 +491,14 @@ async function pttDown() {
 
 async function pttUp() {
   if (!S.ptt) return;
+  const released = performance.now();
   S.ptt = false;
   els.mic.classList.remove('held');
   try { await S.arming; } catch { return; }
   const result = await recorder.stop();
   if (!result) return settle();
   if (result.durationMs < 300) { settle(); els.stateDetail.textContent = 'Too short — hold while you talk'; return; }
-  const t = newTurn('voice');
+  const t = newTurn('voice', released);
   turn = t;
   t.captureMs = result.durationMs;
   setPhase('transcribing');
@@ -494,6 +550,7 @@ function renderLatency() {
   if (!t) return;
   const end = t.tFirstAudio;
   const v2v = end != null ? end - t.t0 : null;
+  els.v2vLabel.textContent = t.source === 'voice' ? 'Key release → first audio' : 'Enter → first audio';
   els.v2v.textContent = v2v != null ? (v2v / 1000).toFixed(2) : '-.--';
   const v = verdict(v2v);
   els.v2vVerdict.dataset.kind = v.kind;
@@ -518,16 +575,47 @@ function renderLatency() {
 }
 
 function renderHistory() {
-  const runs = S.runs;
-  if (!runs.length) { els.history.innerHTML = ''; els.historyNote.textContent = 'Voice-to-voice for your last turns will show here.'; return; }
-  const max = Math.max(...runs.map((r) => r.v2v), 3000);
+  els.copyRuns.disabled = els.clearRuns.disabled = !S.runs.length;
+  const runs = S.runs.filter((r) => r.total != null).slice(-24);
+  if (!runs.length) { els.history.innerHTML = ''; els.historyNote.textContent = 'Key release → first audio for your turns will show here.'; return; }
+  const max = Math.max(...runs.map((r) => r.total), 3000);
   els.history.innerHTML = runs.map((r) => {
-    const v = verdict(r.v2v);
-    return `<span class="hbar" data-kind="${v.kind}" style="height:${Math.max(6, (r.v2v / max) * 100)}%" title="${fmtS(r.v2v)} · ${r.source}${r.engine ? ` · ${r.engine}` : ''}"></span>`;
+    const v = verdict(r.total);
+    return `<span class="hbar" data-kind="${v.kind}" style="height:${Math.max(6, (r.total / max) * 100)}%" title="${fmtS(r.total)} · ${r.source} · ${r.cold ? 'cold' : 'warm'}${r.engine ? ` · ${r.engine}` : ''}"></span>`;
   }).join('');
-  const sorted = runs.map((r) => r.v2v).sort((a, b) => a - b);
-  const med = sorted[Math.floor(sorted.length / 2)];
-  els.historyNote.textContent = `Median ${fmtS(med)} over ${runs.length} turn${runs.length > 1 ? 's' : ''} · target under 1.50 s`;
+  const s = summarize(S.runs);
+  const part = (label, g) => (g.n ? `${label} p50 ${fmtS(g.p50)} · p90 ${g.p90 != null ? fmtS(g.p90) : `needs ${MIN_FOR_P90} turns`} (${g.n})` : `${label} no turns yet`);
+  els.historyNote.textContent = `${part('Warm', s.warm)} — ${part('Cold', s.cold)} — voice turns only · target under 1.50 s`;
+}
+
+function runHeader() {
+  const s = S.status;
+  return {
+    qVersion: s?.version,
+    model: s?.model,
+    whisperModel: s?.stt?.model,
+    serverVoiceEngine: s?.tts?.engine,
+    voiceEngine: S.engine === 'browser' ? 'browser' : 'server',
+    browser: navigator.userAgent,
+    historyTurns: s?.history?.turns,
+    historyChars: s?.history?.chars,
+    modelMemoryMb: s?.ollama?.loadedVramBytes != null ? s.ollama.loadedVramBytes / 1024 ** 2 : null,
+  };
+}
+
+async function copyRunData() {
+  const text = JSON.stringify(buildExport(S.runs, runHeader()), null, 1);
+  els.runData.hidden = true;
+  try {
+    await navigator.clipboard.writeText(text);
+    els.copyNote.textContent = `Copied ${S.runs.length} turn${S.runs.length > 1 ? 's' : ''} · timings only`;
+  } catch {
+    // Clipboard blocked: show the same text to copy by hand.
+    els.runData.value = text;
+    els.runData.hidden = false;
+    els.runData.select();
+    els.copyNote.textContent = 'Clipboard unavailable — copy from the box';
+  }
 }
 
 // ---------- input wiring ----------
@@ -564,6 +652,16 @@ els.form.addEventListener('submit', (e) => {
   els.input.value = '';
   turn = newTurn('text');
   runTurn(text);
+});
+
+els.copyRuns.addEventListener('click', copyRunData);
+els.clearRuns.addEventListener('click', () => {
+  if (!confirm(`Clear the stored timings for ${S.runs.length} turn${S.runs.length > 1 ? 's' : ''}?`)) return;
+  S.runs = [];
+  store.set('runs', S.runs);
+  els.runData.hidden = true;
+  els.copyNote.textContent = '';
+  renderHistory();
 });
 
 els.speak.checked = S.speak;

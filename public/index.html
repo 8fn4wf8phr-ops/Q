@@ -71,7 +71,7 @@
         <div class="bigline">
           <div class="big"><span id="v2v">-.--</span><small>s</small></div>
           <div class="bigmeta">
-            <span>Voice to voice</span>
+            <span id="v2vLabel">Key release → first audio</span>
             <span class="badge" id="v2vVerdict" data-kind="idle">No data yet</span>
           </div>
         </div>
@@ -82,6 +82,12 @@
         <div class="hist">
           <div id="history" class="hbars" aria-hidden="true"></div>
           <p id="historyNote" class="hnote"></p>
+          <div class="runbtns">
+            <button id="copyRuns" type="button" class="ghost">Copy run data</button>
+            <button id="clearRuns" type="button" class="ghost">Clear</button>
+            <span id="copyNote" class="hnote" aria-live="polite"></span>
+          </div>
+          <textarea id="runData" class="rundata" rows="6" readonly hidden aria-label="Run data"></textarea>
         </div>
       </section>
 
