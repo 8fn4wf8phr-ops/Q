@@ -3,7 +3,8 @@
 _Claude Code updates this after every change. Labels: **proposed → approved → built → tested (stand-ins) → verified (real Mac)**. Only "verified" means it worked on Jacquez's Mac with real components._
 
 **Current version:** v0.1  
-**Last updated:** 2026-10-10 (Claude Code: double-click launcher built and confirmed by Jacquez; slow first turn after idle measured)
+**Last updated:** 2026-10-10 (Claude Code: added `docs/CHECKLIST.md`)  
+**What's left for v0.1:** see [CHECKLIST.md](CHECKLIST.md), which lists each item as built or not, checked against the code.
 
 ## v0.1 — what exists
 | Feature | State |
