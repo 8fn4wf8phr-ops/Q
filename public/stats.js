@@ -8,6 +8,9 @@
 export const SCHEMA = 1;
 export const MAX_RUNS = 200;
 export const MIN_FOR_P90 = 10;
+// A turn this long after the model was last used is "idle": the model is still
+// loaded, but macOS may have compressed its memory, so it is slower than warm.
+export const IDLE_MS = 180_000;
 
 const NUMBERS = [
   'at', 'total', 'stt', 'firstToken', 'firstSentence', 'voiceSynth',
@@ -15,6 +18,7 @@ const NUMBERS = [
   'captureMs', 'levelDb', 'loudMs', 'turnIndex', 'idleMs',
 ];
 const ENUMS = {
+  kind: ['warm', 'idle', 'cold'],
   source: ['voice', 'text'],
   engine: ['helper', 'say', 'piper', 'browser', 'none'],
 };
@@ -30,6 +34,13 @@ const HEADER_NUMBERS = ['historyTurns', 'historyChars', 'modelMemoryMb'];
 
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v * 10) / 10 : null);
 const oneOf = (v, allowed) => (allowed.includes(v) ? v : null);
+
+// cold: the model was loaded during the turn or the turn waited on a warm-up.
+// idle: loaded, but unused for IDLE_MS or more. warm: everything else.
+export function kindOf(run) {
+  if (run?.cold === true) return 'cold';
+  return typeof run?.idleMs === 'number' && run.idleMs >= IDLE_MS ? 'idle' : 'warm';
+}
 
 // Nearest-rank percentile: the smallest value with at least p of the data at or below it.
 export function percentile(values, p) {
@@ -56,8 +67,10 @@ export function summarize(runs) {
     metric: 'key release → first audio, ms',
     voiceTurns: voice.length,
     typedTurns: runs.filter((r) => r.source === 'text').length,
-    warm: group(voice.filter((r) => !r.cold)),
-    cold: group(voice.filter((r) => r.cold)),
+    warm: group(voice.filter((r) => kindOf(r) === 'warm')),
+    idle: group(voice.filter((r) => kindOf(r) === 'idle')),
+    cold: group(voice.filter((r) => kindOf(r) === 'cold')),
+    idleMeansAtLeastMs: IDLE_MS,
     p90NeedsAtLeast: MIN_FOR_P90,
     stageMedians: { stt: stage('stt'), firstToken: stage('firstToken'), firstSentence: stage('firstSentence'), voiceSynth: stage('voiceSynth'), promptMs: stage('promptMs') },
   };
@@ -77,6 +90,7 @@ export function cleanRun(run) {
   for (const k of NUMBERS) out[k] = num(run?.[k]);
   for (const [k, allowed] of Object.entries(ENUMS)) out[k] = oneOf(run?.[k], allowed);
   out.cold = run?.cold === true;
+  out.kind = kindOf(out);
   out.sys = cleanSys(run?.sys);
   return out;
 }
@@ -92,6 +106,7 @@ export function buildExport(runs, header = {}, now = new Date()) {
   return {
     schema: SCHEMA,
     exportedAt: now.toISOString(),
+    systemSamples: list.filter((r) => r.sys).length,
     contains: 'timings and system memory figures only — no transcripts, replies or audio',
     header: head,
     summary: summarize(list),

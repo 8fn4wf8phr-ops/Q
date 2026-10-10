@@ -42,6 +42,9 @@ const DEFAULTS = {
 };
 
 const CONFIG = await loadConfig();
+// Raised whenever the page starts needing something new from the server, so a
+// page served by a server that hasn't been restarted can say so.
+const API_LEVEL = 2;
 const VERSION = await readFile(path.join(ROOT, 'package.json'), 'utf8').then((t) => JSON.parse(t).version).catch(() => null);
 let stopping = false;
 
@@ -379,29 +382,54 @@ async function ollamaStatus() {
   }
 }
 
-// Load the model ahead of the first turn so it isn't paying the cold start.
+// Load the model ahead of the first turn and run the real system prompt
+// through it, so the first turn only has to process the new message. It sends
+// exactly the system prompt a chat turn sends and asks for a single token.
 async function warmModel() {
-  const r = await fetch(`${CONFIG.ollamaUrl}/api/generate`, {
+  const r = await fetch(`${CONFIG.ollamaUrl}/api/chat`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ model: CONFIG.model, prompt: '', keep_alive: CONFIG.keepAlive, options: { num_ctx: CONFIG.numCtx } }),
+    body: JSON.stringify({
+      model: CONFIG.model,
+      stream: false,
+      keep_alive: CONFIG.keepAlive,
+      options: { num_ctx: CONFIG.numCtx, temperature: CONFIG.temperature, num_predict: 1 },
+      messages: [{ role: 'system', content: await systemPrompt() }],
+    }),
   });
   if (!r.ok) throw new Error(`warmup HTTP ${r.status}`);
   const data = await r.json();
-  return { loadMs: (data.load_duration || 0) / 1e6 };
+  if (data.error) throw new Error(data.error);
+  return { loadMs: (data.load_duration || 0) / 1e6, promptMs: (data.prompt_eval_duration || 0) / 1e6 };
 }
 
 // Warm-up state, reported in /api/status so the UI never shows "Ready" while
 // the model is still loading. Never rejects: a failed warm-up resolves null.
-const warm = { state: 'idle', promise: null, ms: null, error: null };
+const warm = { state: 'idle', promise: null, ms: null, error: null, lastTry: 0 };
+
+// When the model was last used (a turn or a warm-up), to tell a turn that
+// follows a long idle spell from an ordinary warm one.
+let lastModelUse = null;
+
+// Called on every status poll: if Ollama is up and the model isn't in memory
+// (Ollama was restarted, started after Q, or dropped the model), warm it again
+// instead of showing "Ready" over a cold model. A failed attempt is retried at
+// most every 15 s.
+function warmIfNeeded(o) {
+  if (!o.reachable || !o.modelInstalled || o.modelLoaded) return;
+  if (warm.state === 'warming') return;
+  if (warm.state === 'failed' && Date.now() - warm.lastTry < 15_000) return;
+  startWarmup();
+}
 
 function startWarmup() {
   const started = performance.now();
   warm.state = 'warming';
   warm.ms = null;
   warm.error = null;
+  warm.lastTry = Date.now();
   warm.promise = warmModel()
-    .then((w) => { warm.state = 'ready'; warm.ms = performance.now() - started; return w; })
+    .then((w) => { warm.state = 'ready'; warm.ms = performance.now() - started; lastModelUse = Date.now(); return w; })
     .catch((err) => { warm.state = 'failed'; warm.ms = performance.now() - started; warm.error = err.message; return null; });
   return warm.promise;
 }
@@ -409,6 +437,11 @@ function startWarmup() {
 async function persona() {
   try { return await readFile(path.join(ROOT, 'persona.md'), 'utf8'); }
   catch { return 'You are Q, a helpful local assistant. Keep spoken replies short.'; }
+}
+
+// The one system prompt, shared by chat turns and the warm-up so they match.
+async function systemPrompt() {
+  return `${await persona()}\n\n${TIME_NOTE}`;
 }
 
 // Ollama reuses its work on a prompt only up to the first token that differs
@@ -444,7 +477,7 @@ async function streamChat(req, res) {
   const history = Array.isArray(body.messages) ? body.messages : [];
   const trimmed = trimHistory(history.filter((m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string'))
     .map((m) => ({ role: m.role, content: stamped(m) }));
-  const system = `${await persona()}\n\n${TIME_NOTE}`;
+  const system = await systemPrompt();
 
   const controller = new AbortController();
   res.on('close', () => { if (!res.writableEnded) controller.abort(); });
@@ -461,6 +494,7 @@ async function streamChat(req, res) {
     if (controller.signal.aborted) return res.end();
   }
 
+  const idleMs = lastModelUse == null ? null : Date.now() - lastModelUse;
   const started = performance.now();
   let firstTokenMs = null;
   try {
@@ -494,6 +528,7 @@ async function streamChat(req, res) {
           send({ type: 'token', text });
         }
         if (msg.done) {
+          lastModelUse = Date.now();
           const evalMs = (msg.eval_duration || 0) / 1e6;
           send({
             type: 'done',
@@ -503,6 +538,7 @@ async function streamChat(req, res) {
               totalMs: performance.now() - started,
               loadMs: (msg.load_duration || 0) / 1e6,
               warmupWaitMs,
+              idleMs,
               promptTokens: msg.prompt_eval_count || 0,
               promptMs: (msg.prompt_eval_duration || 0) / 1e6,
               evalTokens: msg.eval_count || 0,
@@ -622,11 +658,14 @@ const server = http.createServer(async (req, res) => {
   const { pathname } = new URL(req.url, 'http://localhost');
   try {
     if (req.method === 'GET' && pathname === '/api/status') {
+      const ollama = await ollamaStatus();
+      warmIfNeeded(ollama);
       return json(res, 200, {
         version: VERSION,
+        api: API_LEVEL,
         model: CONFIG.model,
         history: { turns: CONFIG.historyTurns, chars: CONFIG.historyChars },
-        ollama: await ollamaStatus(),
+        ollama,
         warmup: { state: warm.state, ms: warm.ms, error: warm.error },
         stt: { mode: stt.mode, ready: stt.mode === 'cli' || (stt.mode === 'server' && stt.serverReady), model: path.basename(CONFIG.whisperModel), error: stt.mode === 'none' ? stt.lastError : null },
         tts: { engine: tts.engine, available: tts.available, error: tts.available ? null : tts.lastError, note: tts.note, defaultVoice: tts.voices.some((v) => v.name === CONFIG.sayVoice) ? CONFIG.sayVoice : null },
@@ -667,7 +706,7 @@ server.listen(CONFIG.port, '127.0.0.1', async () => {
   console.log(`  model    ${CONFIG.model}  ${o.reachable ? (o.modelInstalled ? '✓ installed' : '✗ not pulled — run: ollama pull ' + CONFIG.model) : '✗ Ollama not running'}`);
   console.log(`  speech   whisper.cpp (${stt.mode})${stt.mode === 'none' ? '  ✗ ' + stt.lastError : '  ✓'}`);
   console.log(`  voice    ${tts.engine}${tts.available ? '  ✓' : '  ✗ ' + tts.lastError}\n`);
-  if (o.reachable && o.modelInstalled) startWarmup().then((w) => console.log(w ? `  model warmed in ${w.loadMs.toFixed(0)} ms\n` : `  model warm-up failed: ${warm.error}\n`));
+  if (o.reachable && o.modelInstalled) startWarmup().then((w) => console.log(w ? `  model loaded in ${w.loadMs.toFixed(0)} ms, system prompt primed in ${w.promptMs.toFixed(0)} ms\n` : `  model warm-up failed: ${warm.error}\n`));
 });
 
 const shutdown = () => { stopping = true; stt.serverProc?.kill(); helper.proc?.kill(); process.exit(0); };

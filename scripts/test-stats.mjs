@@ -1,7 +1,7 @@
 // Tests for latency statistics and the run-data export (public/stats.js).
 //   npm test
 
-import { percentile, summarize, cleanRun, buildExport, MIN_FOR_P90 } from '../public/stats.js';
+import { percentile, summarize, cleanRun, buildExport, kindOf, MIN_FOR_P90, IDLE_MS } from '../public/stats.js';
 
 let failed = 0;
 function check(name, ok, detail = '') {
@@ -35,6 +35,20 @@ check('2 cold turns counted, p50 5000', s.cold.n === 2 && s.cold.p50 === 5000, J
 check(`cold p90 withheld below ${MIN_FOR_P90} turns`, s.cold.p90 === null);
 check('typed turn kept out of the statistics but counted', s.typedTurns === 1 && s.voiceTurns === 12);
 check('a turn with no audio is not counted', s.voiceTurns === 12);
+
+console.log('\nWarm, idle and cold');
+check('a turn 7.6 min after the last use is idle', kindOf({ cold: false, idleMs: 7.6 * 60000 }) === 'idle');
+check('a turn 30 s after the last use is warm', kindOf({ cold: false, idleMs: 30000 }) === 'warm');
+check(`exactly ${IDLE_MS / 60000} min counts as idle`, kindOf({ cold: false, idleMs: IDLE_MS }) === 'idle');
+check('cold wins over idle', kindOf({ cold: true, idleMs: 10 * 60000 }) === 'cold');
+check('unknown idle time is treated as warm', kindOf({ cold: false, idleMs: null }) === 'warm');
+const mixed = [run(1400, { idleMs: 20000 }), run(1600, { idleMs: 40000 }), run(5960, { idleMs: 456000 }), run(7190, { cold: true, idleMs: 900000 })];
+const sm = summarize(mixed);
+check('summary reports the three groups separately', sm.warm.n === 2 && sm.idle.n === 1 && sm.cold.n === 1, JSON.stringify([sm.warm, sm.idle, sm.cold]));
+check('the idle turn does not inflate the warm p50', sm.warm.p50 === 1400 && sm.idle.p50 === 5960);
+const ex = buildExport(mixed);
+check('each exported run carries its kind', same(ex.runs.map((r) => r.kind), ['warm', 'warm', 'idle', 'cold']));
+check('export counts how many runs have a system sample', ex.systemSamples === 0 && buildExport([{ ...run(1), sys: { swapUsedMb: 1 } }]).systemSamples === 1);
 
 console.log('\nExport contains numbers only');
 const SECRET = 'my-private-sentence-xyzzy';

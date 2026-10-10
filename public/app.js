@@ -1,6 +1,10 @@
 import { QCore } from './core.js';
 import { Recorder, Player, BrowserSpeaker, blobToWav16k } from './audio.js';
-import { SCHEMA, MAX_RUNS, MIN_FOR_P90, summarize, buildExport } from './stats.js';
+import { SCHEMA, MAX_RUNS, MIN_FOR_P90, IDLE_MS, kindOf, summarize, buildExport } from './stats.js';
+
+// What this page needs from the server (server.js API_LEVEL). A server started
+// before an update keeps serving new pages until it is restarted.
+const NEEDS_API = 2;
 
 const $ = (sel) => document.querySelector(sel);
 const els = {
@@ -162,6 +166,7 @@ function renderStatus() {
     els.status.innerHTML = row('Q server', 'unreachable', { kind: 'err', text: 'Down' });
     return;
   }
+  const stale = (s.api ?? 0) < NEEDS_API;
   const o = s.ollama;
   const brain = !o.reachable ? { kind: 'err', text: 'No Ollama' }
     : !o.modelInstalled ? { kind: 'warn', text: 'Not pulled' }
@@ -174,6 +179,7 @@ function renderStatus() {
     ? row('Voice', 'Browser speech', voice, speaker.available ? `${speaker.pick().name} · local voice` : 'no local voice in this browser')
     : row('Voice', SERVER_ENGINES[s.tts.engine] || s.tts.engine, voice, s.tts.available ? [S.voice || s.tts.defaultVoice || 'system default voice', s.tts.note].filter(Boolean).join(' · ') : s.tts.error);
   els.status.innerHTML = [
+    stale ? row('Update', 'Q’s server is older than this page', { kind: 'warn', text: 'Restart Q' }, 'some features and measurements are off until then') : '',
     row('Brain', s.model, brain, meta || (o.reachable ? '' : 'start the Ollama app')),
     row('Ears', `whisper.cpp`, ears, s.stt.ready ? `${s.stt.model.replace(/^ggml-|\.bin$/g, '')} · ${s.stt.mode === 'server' ? 'kept loaded' : 'reloads each turn'}` : s.stt.error),
     voiceRow,
@@ -322,7 +328,9 @@ async function sampleSystem(t) {
   if (t.sysAsked) return;
   t.sysAsked = true;
   try {
-    const now = await (await fetch('/api/system')).json();
+    const r = await fetch('/api/system');
+    if (!r.ok) throw new Error(`system HTTP ${r.status}`);
+    const now = await r.json();
     const since = (key) => (prevSys && now[key] != null && prevSys[key] != null ? now[key] - prevSys[key] : null);
     t.sys = { ...now, decompressedMb: since('decompressedTotalMb'), pageinsMb: since('pageinsTotalMb'), swapinsMb: since('swapinsTotalMb') };
     prevSys = now;
@@ -387,7 +395,7 @@ async function runTurn(text) {
     const st = t.stats;
     setBubble(bubble, full || '(no reply)', {
       streaming: false,
-      meta: st ? `${st.evalTokens} tokens · ${st.tokPerSec ? st.tokPerSec.toFixed(1) : '—'} tok/s${coldMs(st) ? ` · cold start ${(coldMs(st) / 1000).toFixed(1)} s` : ''}` : '',
+      meta: st ? `${st.evalTokens} tokens · ${st.tokPerSec ? st.tokPerSec.toFixed(1) : '—'} tok/s${coldMs(st) ? ` · cold start ${(coldMs(st) / 1000).toFixed(1)} s` : st.idleMs >= IDLE_MS ? ` · after ${(st.idleMs / 60000).toFixed(1)} min idle` : ''}` : '',
     });
     renderLatency();
     if (!out().playing) finishTurn();
@@ -437,7 +445,7 @@ function recordTurn(t) {
     levelDb: t.level?.peakDb ?? null,
     loudMs: t.level?.loudMs ?? null,
     turnIndex: S.messages.filter((m) => m.role === 'user').length,
-    idleMs: t.idleMs,
+    idleMs: st.idleMs ?? t.idleMs,
     sys: t.sys ?? null,
   };
   S.runs = [...S.runs, t.run].slice(-MAX_RUNS);
@@ -536,6 +544,12 @@ const fmtS = (ms) => (ms == null ? '—' : `${(ms / 1000).toFixed(2)} s`);
 const fmtDb = (db) => (Number.isFinite(db) ? `${db.toFixed(0)} dB` : 'silence');
 // Cold = the model was loaded for this turn, or the turn waited on the startup warm-up.
 const coldMs = (st) => (st.loadMs > 300 ? st.loadMs : 0) + (st.warmupWaitMs || 0);
+// warm / idle / cold for the panel, from the same rule the statistics use.
+function loadLabel(st) {
+  if (coldMs(st)) return `${(coldMs(st) / 1000).toFixed(1)} s (cold${st.warmupWaitMs ? ', waited on warm-up' : ''})`;
+  if (st.idleMs >= IDLE_MS) return `idle · ${(st.idleMs / 60000).toFixed(1)} min since last use`;
+  return 'warm';
+}
 function verdict(ms) {
   if (ms == null) return { kind: 'idle', text: 'No data yet' };
   if (ms < 1500) return { kind: 'ok', text: 'Feels live' };
@@ -569,7 +583,7 @@ function renderLatency() {
   els.latRows.innerHTML = segs.map((s) => `<div class="lrow"><span class="key ${s.key}"></span><span>${s.label}</span><b>${fmtS(s.ms)}</b></div>`).join('')
     + `<div class="lrow plain"><span></span><span>Prompt processing</span><b>${st ? `${fmtS(st.promptMs)} · ${st.promptTokens} tokens` : '—'}</b></div>`
     + `<div class="lrow plain"><span></span><span>Generation speed</span><b>${st?.tokPerSec ? `${st.tokPerSec.toFixed(1)} tok/s` : '—'}</b></div>`
-    + `<div class="lrow plain"><span></span><span>Model load this turn</span><b>${st ? (coldMs(st) ? `${(coldMs(st) / 1000).toFixed(1)} s (cold${st.warmupWaitMs ? ', waited on warm-up' : ''})` : 'warm') : '—'}</b></div>`
+    + `<div class="lrow plain"><span></span><span>Model load this turn</span><b>${st ? loadLabel(st) : '—'}</b></div>`
     + (t.source === 'voice' ? `<div class="lrow plain"><span></span><span>You spoke for</span><b>${fmtS(t.captureMs)}</b></div>` : '')
     + (t.level ? `<div class="lrow plain"><span></span><span>Input level</span><b>${fmtDb(t.level.peakDb)} · ${fmtS(t.level.loudMs)} of sound</b></div>` : '');
 }
@@ -581,11 +595,11 @@ function renderHistory() {
   const max = Math.max(...runs.map((r) => r.total), 3000);
   els.history.innerHTML = runs.map((r) => {
     const v = verdict(r.total);
-    return `<span class="hbar" data-kind="${v.kind}" style="height:${Math.max(6, (r.total / max) * 100)}%" title="${fmtS(r.total)} · ${r.source} · ${r.cold ? 'cold' : 'warm'}${r.engine ? ` · ${r.engine}` : ''}"></span>`;
+    return `<span class="hbar" data-kind="${v.kind}" style="height:${Math.max(6, (r.total / max) * 100)}%" title="${fmtS(r.total)} · ${r.source} · ${kindOf(r)}${r.engine ? ` · ${r.engine}` : ''}"></span>`;
   }).join('');
   const s = summarize(S.runs);
   const part = (label, g) => (g.n ? `${label} p50 ${fmtS(g.p50)} · p90 ${g.p90 != null ? fmtS(g.p90) : `needs ${MIN_FOR_P90} turns`} (${g.n})` : `${label} no turns yet`);
-  els.historyNote.textContent = `${part('Warm', s.warm)} — ${part('Cold', s.cold)} — voice turns only · target under 1.50 s`;
+  els.historyNote.textContent = `${part('Warm', s.warm)} — ${part(`Idle ${IDLE_MS / 60000}+ min`, s.idle)} — ${part('Cold', s.cold)} — voice turns only · target under 1.50 s`;
 }
 
 function runHeader() {
@@ -608,7 +622,8 @@ async function copyRunData() {
   els.runData.hidden = true;
   try {
     await navigator.clipboard.writeText(text);
-    els.copyNote.textContent = `Copied ${S.runs.length} turn${S.runs.length > 1 ? 's' : ''} · timings only`;
+    const missing = S.runs.filter((r) => !r.sys).length;
+    els.copyNote.textContent = `Copied ${S.runs.length} turn${S.runs.length > 1 ? 's' : ''} · timings only${missing ? ` · ${missing} without memory figures` : ''}`;
   } catch {
     // Clipboard blocked: show the same text to copy by hand.
     els.runData.value = text;
