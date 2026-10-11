@@ -3,7 +3,7 @@
 _Claude Code updates this after every change. Labels: **proposed → approved → built → tested (stand-ins) → verified (real Mac)**. Only "verified" means it worked on Jacquez's Mac with real components._
 
 **Current version:** v0.1  
-**Last updated:** 2026-10-11 (Claude Code: microphone menu committed; System panel text now wraps instead of being cut off)  
+**Last updated:** 2026-10-11 (Claude Code: D-014 latency and battery measurements recorded; no code changed)  
 **What's left:** see [CHECKLIST.md](CHECKLIST.md), which covers the whole roadmap and lists each item as built or not, checked against the code.
 
 ## v0.1 — what exists
@@ -293,5 +293,49 @@ One run of a model that varies every time: these are observations, not rates.
 - The hint helps both models by a similar amount and costs nothing measurable.
 - A clipped start defeats both models: 0 and 2 exact out of 28. A bigger model does not fix that.
 - Jacquez's two real failures ("What time is it", "Tell me about Spider-Man") were transcribed correctly by both models in every condition except the clipped one, so they were not reproduced. A follow-up test put a key thump, a breath-like noise, a loud noise burst or 1.5 s of silence before the speech: both models were still 6 of 6 on every variant. The cause of his real-voice errors is not identified; synthesized speech does not stand in for his voice, mic and room.
+
+### 2026-10-11 — D-014: first turn after idle, with and without keep-warm (run by Claude Code, 11:24–12:10, Mac kept awake and left mostly alone; one trial per cell)
+Each "turn" here is one Whisper transcription of a fixed clip, one fully cached model request and one sentence of speech, called directly; the total is the sum of the three, not a real key-release figure. Hot baseline: about 310–330 ms.
+
+| After idle | No keep-warm | Ping every 60 s | Warm on key press, then 3 s of "speaking" |
+|---|---|---|---|
+| 5 min (on power) | 3003 ms (speech → text 1257, first token 1524) | 527 ms | 348 ms (the warm itself took 1.4 s) |
+| 10 min (on battery) | 5388 ms (speech → text 258, first token 4849) | 539 ms | 2919 ms (the warm itself took 6.2 s, longer than the 3 s of speaking) |
+
+| | No keep-warm | Ping every 60 s | Warm on key press |
+|---|---|---|---|
+| Memory decompressed during the turn, 5 min / 10 min | 3630 / 8144 MB | 163 / 327 MB | 360 / 3227 MB |
+| Swapped in from disk during the turn, 5 min / 10 min | 665 / 1120 MB | 3 / 9 MB | 6 / 820 MB |
+| Model processor time over the idle window, 5 min / 10 min | 2.1 / 2.2 s | 2.2 / 22.9 s | 1.3 / 2.2 s |
+
+- The ping removes the slowdown at both lengths. Each ping (one tiny Whisper clip, one one-token model request, one short spoken word) took a median 0.51–0.58 s.
+- Warm on key press is enough after 5 minutes and not after 10: the wake-up took 6.2 s, so the turn still waited 2.6 s for its first token. It roughly halved the delay.
+- After 10 minutes without keep-warm, over 1 GB came back from disk swap, not only from compressed memory. That is why longer idle spells are so much worse.
+- The power source changed between the two rows (Jacquez unplugged at about 11:40), so compare across a row, not down a column.
+- Battery cost is not measured. Processor time for the model during the pinged window was almost unchanged on power (2.2 s against 2.1 s) and ten times higher on battery (22.9 s against 2.2 s); with one trial each, that difference is unexplained. Processor time also misses graphics-chip energy.
+- Not measured: what keeping the model hot does to other apps' memory, and whether a ping every 2 minutes would do (an earlier test showed no slowdown after 2 idle minutes and some after 4).
+
+### 2026-10-11 — D-014 battery half (run by Claude Code, 12:20–13:08, on battery throughout, 67% → 61%, screen kept on; six 8-minute blocks in the order below; battery current sampled every 10 s)
+| Block | Draw, mean | Draw, median | Charge used | Model / Whisper processor time | Turn at the end of the block |
+|---|---|---|---|---|---|
+| No ping, round 1 | 3.33 W | 3.23 W | 29 mAh | 2.0 / 2.1 s | 1526 ms |
+| Ping every 60 s, round 1 | 3.69 W | 3.34 W | 43 mAh | 3.9 / 3.6 s | 561 ms |
+| Ping every 120 s, round 1 | 3.84 W | 3.31 W | 36 mAh | 3.2 / 3.4 s | 592 ms |
+| No ping, round 2 | 3.61 W | 3.31 W | 41 mAh | 1.9 / 2.0 s | 1862 ms |
+| Ping every 60 s, round 2 | 5.44 W | 3.88 W | 58 mAh | 3.8 / 3.2 s | 553 ms |
+| Ping every 120 s, round 2 | 3.47 W | 3.14 W | 31 mAh | 3.2 / 3.4 s | 529 ms |
+
+| Average of the two rounds | No ping | Ping every 60 s | Ping every 120 s |
+|---|---|---|---|
+| Draw, mean | 3.47 W | 4.56 W | 3.66 W |
+| Charge used per 8 min | 35 mAh | 50.5 mAh | 33.5 mAh |
+| Turn after 8 idle minutes | 1.69 s | 0.56 s | 0.56 s |
+
+- A ping every 120 s kept the turn as fast as a ping every 60 s.
+- The 120 s ping's battery cost is not distinguishable from noise: +0.19 W on the mean, less charge used than no ping, and the two no-ping blocks differ from each other by 0.28 W and 12 mAh.
+- The 60 s ping cost more on every measure, but how much is uncertain: +0.36 W in round 1 and +1.83 W in round 2, where the mean (5.44 W) sits far above the median (3.88 W), so something else drew power during that block.
+- Processor time is the steadiest measure: over 8 minutes pings added about 1.9 s of model time and 1.4 s of Whisper time at 60 s, and about 1.3 s of each at 120 s.
+- Swap in use stayed between 8.1 and 8.5 GB in every block; no memory effect on the rest of the system was visible at this resolution.
+- Limits: two blocks per condition, a screen held on, and whatever else the Mac was doing. Good enough to rank the options, not to quote a battery-life figure.
 
 None of the speech-engine tables above are end-to-end numbers from Jacquez's browser. The cache benchmark (`scripts/bench-cache.mjs`) has not been run against real Ollama yet.
