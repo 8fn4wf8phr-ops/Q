@@ -4,6 +4,8 @@
   "temperature": 0.8,
   "historyTurns": 8,
   "historyChars": 6000,
+  "keepWarmSeconds": 120,
+  "keepWarmMinutes": 15,
   "whisperModel": "models/ggml-base.en.bin",
   "whisperThreads": 4,
   "whisperPrompt": "Hey Q. Yo Q, what's good? Q, open VS Code. Ollama, Whisper, MacBook Air, GitHub.",

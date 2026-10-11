@@ -5,7 +5,7 @@ import { SCHEMA, MAX_RUNS, MIN_FOR_P90, IDLE_MS, kindOf, summarize, buildExport 
 
 // What this page needs from the server (server.js API_LEVEL). A server started
 // before an update keeps serving new pages until it is restarted.
-const NEEDS_API = 2;
+const NEEDS_API = 3;
 
 const $ = (sel) => document.querySelector(sel);
 const els = {
@@ -239,7 +239,14 @@ function renderStatus() {
     : !o.modelInstalled ? { kind: 'warn', text: 'Not pulled' }
     : warming() ? { kind: 'idle', text: 'Loading' }
     : o.modelLoaded ? { kind: 'ok', text: 'Loaded' } : { kind: 'idle', text: 'Installed' };
-  const meta = [o.parameterSize, o.quantization].filter(Boolean).join(' · ');
+  // Say what keep-warm is doing in every state, not only while it is running.
+  const kw = s.keepWarm;
+  const warmUntil = !kw ? null
+    : !kw.minutes ? 'keep-warm off'
+    : kw.until ? `kept warm until ${new Date(kw.until).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
+    : kw.hadTurn ? 'keep-warm ended · restarts on your next turn'
+    : 'keep-warm starts after your first turn';
+  const meta = [o.parameterSize, o.quantization, o.modelLoaded ? warmUntil : null].filter(Boolean).join(' · ');
   const ears = s.stt.ready ? { kind: 'ok', text: s.stt.mode === 'server' ? 'Ready' : 'Ready (slow)' } : { kind: 'warn', text: 'Missing' };
   const voice = canSpeak() ? { kind: 'ok', text: 'Ready' } : { kind: 'warn', text: 'Missing' };
   const voiceRow = S.engine === 'browser'
@@ -503,6 +510,7 @@ function recordTurn(t) {
     idleMs: st.idleMs ?? t.idleMs,
     firstChunk: t.firstChunk ?? null,
     mic: t.mic ?? null,
+    pings: st.pingsSinceLastTurn ?? null,
     sys: t.sys ?? null,
   };
   S.runs = [...S.runs, t.run].slice(-MAX_RUNS);
@@ -545,6 +553,8 @@ async function pttDown() {
   if (!ready()) { setPhase('offline', offlineReason()); return; }
   if (!S.status?.stt?.ready) { fail('Speech-to-text isn’t set up yet — run npm run setup. You can still type.'); return; }
   interrupt();
+  // Wake the model, Whisper and the voice now, while the user is still talking.
+  fetch('/api/keepwarm', { method: 'POST' }).catch(() => {});
   S.ptt = true;
   unlockSpeech();
   els.mic.classList.add('held');

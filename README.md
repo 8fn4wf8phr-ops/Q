@@ -56,6 +56,7 @@ Try it with VS Code and your browser open too, because that's how you'll actuall
 
 - **Personality:** edit `persona.md`. Q re-reads it every turn, so you don't need to restart.
 - **Voice:** pick one in the Voice panel. Q speaks through a small helper (`bin/q-speak`, built from `speech/q-speak.swift` by setup or `npm run build:speech`) that keeps the macOS voice loaded. Without it Q falls back to `say`, which adds over a second per sentence, and the System panel says so. The Voice engine menu can also switch to the browser's own speech, which only ever uses voices installed on this Mac. For better voices, go to System Settings → Accessibility → Spoken Content → System Voice → Manage Voices and download a Premium or Enhanced voice. It will show up in the list.
+- **Staying responsive after a pause:** for 15 minutes after your last turn, while the Q page is open, Q pings the model, Whisper and the voice every 2 minutes so macOS doesn't compress their memory, and it wakes them the moment you press the talk key. Change `keepWarmSeconds` and `keepWarmMinutes` in `q.config.json`; set `keepWarmMinutes` to 0 to turn it off.
 - **Model and other settings:** copy `q.config.example.json` to `q.config.json` and edit it. For example, set `"model": "qwen2.5:3b"` after running `ollama pull qwen2.5:3b`. Restart Q after you change it.
 
 ## What's honest about the UI

@@ -26,6 +26,8 @@ const DEFAULTS = {
   temperature: 0.8,
   historyTurns: 8,
   historyChars: 6000,
+  keepWarmSeconds: 120, // ping this often…
+  keepWarmMinutes: 15, // …for this long after the last turn (0 turns keep-warm off)
   whisperServerBin: 'whisper-server',
   whisperCliBin: 'whisper-cli',
   whisperModel: 'models/ggml-base.en.bin',
@@ -45,7 +47,7 @@ const DEFAULTS = {
 const CONFIG = await loadConfig();
 // Raised whenever the page starts needing something new from the server, so a
 // page served by a server that hasn't been restarted can say so.
-const API_LEVEL = 2;
+const API_LEVEL = 3;
 const VERSION = await readFile(path.join(ROOT, 'package.json'), 'utf8').then((t) => JSON.parse(t).version).catch(() => null);
 let stopping = false;
 
@@ -474,6 +476,11 @@ function trimHistory(msgs) {
 }
 
 async function streamChat(req, res) {
+  activeChats++;
+  try { await streamChatInner(req, res); } finally { activeChats--; }
+}
+
+async function streamChatInner(req, res) {
   const body = JSON.parse((await readBody(req, 1_000_000)).toString('utf8') || '{}');
   const history = Array.isArray(body.messages) ? body.messages : [];
   const trimmed = trimHistory(history.filter((m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string'))
@@ -499,6 +506,7 @@ async function streamChat(req, res) {
   const started = performance.now();
   let firstTokenMs = null;
   const echo = createEchoFilter(); // drops a timestamp the model copies back at the start
+  let said = ''; // the reply as the page received it, kept only so keep-warm can replay this turn
   try {
     const upstream = await fetch(`${CONFIG.ollamaUrl}/api/chat`, {
       method: 'POST',
@@ -528,12 +536,15 @@ async function streamChat(req, res) {
         if (text) {
           if (firstTokenMs == null) firstTokenMs = performance.now() - started;
           const out = echo.push(text);
-          if (out) send({ type: 'token', text: out });
+          if (out) { said += out; send({ type: 'token', text: out }); }
         }
         if (msg.done) {
           const held = echo.end();
-          if (held) send({ type: 'token', text: held });
-          lastModelUse = Date.now();
+          if (held) { said += held; send({ type: 'token', text: held }); }
+          lastModelUse = keep.lastTurnAt = Date.now();
+          keep.messages = [{ role: 'system', content: system }, ...trimmed, ...(said ? [{ role: 'assistant', content: said }] : [])];
+          const pingsSinceLastTurn = keep.sinceTurn;
+          keep.sinceTurn = 0;
           const evalMs = (msg.eval_duration || 0) / 1e6;
           send({
             type: 'done',
@@ -544,6 +555,7 @@ async function streamChat(req, res) {
               loadMs: (msg.load_duration || 0) / 1e6,
               warmupWaitMs,
               idleMs,
+              pingsSinceLastTurn,
               promptTokens: msg.prompt_eval_count || 0,
               promptMs: (msg.prompt_eval_duration || 0) / 1e6,
               evalTokens: msg.eval_count || 0,
@@ -559,6 +571,90 @@ async function streamChat(req, res) {
   }
   res.end();
 }
+
+// ---------- keep-warm (D-026) ----------
+// After a few idle minutes macOS compresses the memory of the model, Whisper
+// and the voice, and the next turn takes seconds to wake them. Two remedies:
+//  - while a Q page is open, touch all three every keepWarmSeconds, for
+//    keepWarmMinutes after the last turn;
+//  - whenever the talk key goes down, touch them at once, so they wake while
+//    the user is still speaking.
+// A touch is one one-token model request, one tiny Whisper clip and one spoken
+// word. The model request replays the last turn exactly, reply included, so
+// Ollama's cached conversation still ends where the conversation ends.
+
+const keep = { lastTurnAt: 0, lastPollAt: 0, lastTouchAt: 0, busy: false, sinceTurn: 0, messages: null, clip: null };
+let activeChats = 0;
+
+// A short spoken clip at 16 kHz for Whisper, made once with Q's own voice.
+async function keepWarmClip() {
+  if (keep.clip) return keep.clip;
+  const made = await synthesize('Okay.', '').catch(() => null);
+  if (!made) return null;
+  const rate = made.wav.readUInt32LE(24);
+  const n = Math.floor((made.wav.length - 44) / 2);
+  const out = Buffer.alloc(Math.floor((n * 16000) / rate) * 2);
+  for (let i = 0; i < out.length / 2; i++) out.writeInt16LE(made.wav.readInt16LE(44 + Math.min(n - 1, Math.floor((i * rate) / 16000)) * 2), i * 2);
+  keep.clip = pcmToWav(out, 16000);
+  return keep.clip;
+}
+
+async function touchModel() {
+  const r = await fetch(`${CONFIG.ollamaUrl}/api/chat`, {
+    method: 'POST',
+    signal: AbortSignal.timeout(30_000),
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: CONFIG.model,
+      stream: false,
+      keep_alive: CONFIG.keepAlive,
+      options: { num_ctx: CONFIG.numCtx, temperature: CONFIG.temperature, num_predict: 1 },
+      messages: keep.messages ?? [{ role: 'system', content: await systemPrompt() }],
+    }),
+  });
+  await r.arrayBuffer();
+}
+
+async function touchWhisper() {
+  if (stt.mode !== 'server' || !stt.serverReady) return; // whisper-cli reloads on every call anyway
+  const clip = await keepWarmClip();
+  if (!clip) return;
+  const form = new FormData();
+  form.append('file', new Blob([clip], { type: 'audio/wav' }), 'warm.wav');
+  form.append('response_format', 'json');
+  form.append('temperature', '0');
+  const r = await fetch(`http://127.0.0.1:${CONFIG.whisperPort}/inference`, { method: 'POST', body: form, signal: AbortSignal.timeout(30_000) });
+  await r.arrayBuffer();
+}
+
+async function touchVoice() {
+  if (tts.engine === 'helper' && helper.proc) await helperSpeak('Ok.', tts.voices.find((v) => v.name === CONFIG.sayVoice)?.id);
+}
+
+// Never overlaps a real turn, a warm-up or another touch.
+async function touchAll() {
+  if (keep.busy || activeChats > 0 || warm.state !== 'ready') return false;
+  keep.busy = true;
+  try {
+    await Promise.allSettled([touchModel(), touchWhisper(), touchVoice()]);
+    keep.lastTouchAt = lastModelUse = Date.now();
+    keep.sinceTurn++;
+    return true;
+  } finally {
+    keep.busy = false;
+  }
+}
+
+const keepWarmUntil = () => (CONFIG.keepWarmMinutes && keep.lastTurnAt ? keep.lastTurnAt + CONFIG.keepWarmMinutes * 60_000 : 0);
+// A page counts as open if it polled status in the last 30 s (it polls every 8 s while visible).
+const pageOpen = () => Date.now() - keep.lastPollAt < 30_000;
+
+setInterval(() => {
+  const now = Date.now();
+  if (now > keepWarmUntil() || !pageOpen()) return;
+  if (now - (lastModelUse || 0) < CONFIG.keepWarmSeconds * 1000) return;
+  touchAll().catch(() => {});
+}, 5000).unref();
 
 // ---------- system sample (for run data) ----------
 // Memory and power figures recorded next to each turn's timings. Every command
@@ -665,6 +761,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && pathname === '/api/status') {
       const ollama = await ollamaStatus();
       warmIfNeeded(ollama);
+      keep.lastPollAt = Date.now();
       return json(res, 200, {
         version: VERSION,
         api: API_LEVEL,
@@ -672,10 +769,17 @@ const server = http.createServer(async (req, res) => {
         history: { turns: CONFIG.historyTurns, chars: CONFIG.historyChars },
         ollama,
         warmup: { state: warm.state, ms: warm.ms, error: warm.error },
+        keepWarm: { until: keepWarmUntil() > Date.now() ? keepWarmUntil() : null, hadTurn: keep.lastTurnAt > 0, everySeconds: CONFIG.keepWarmSeconds, minutes: CONFIG.keepWarmMinutes },
         stt: { mode: stt.mode, ready: stt.mode === 'cli' || (stt.mode === 'server' && stt.serverReady), model: path.basename(CONFIG.whisperModel), error: stt.mode === 'none' ? stt.lastError : null },
         tts: { engine: tts.engine, available: tts.available, error: tts.available ? null : tts.lastError, note: tts.note, defaultVoice: tts.voices.some((v) => v.name === CONFIG.sayVoice) ? CONFIG.sayVoice : null },
         server: { host: '127.0.0.1', port: CONFIG.port, pid: process.pid, rssBytes: process.memoryUsage().rss },
       });
+    }
+    if (req.method === 'POST' && pathname === '/api/keepwarm') {
+      // The talk key just went down. Skip it if everything was used moments ago.
+      if (Date.now() - (lastModelUse || 0) > 20_000) touchAll().catch(() => {});
+      res.writeHead(204);
+      return res.end();
     }
     if (req.method === 'GET' && pathname === '/api/system') return json(res, 200, await systemSample());
     if (req.method === 'GET' && pathname === '/api/voices') return json(res, 200, { engine: tts.engine, voices: tts.voices });
