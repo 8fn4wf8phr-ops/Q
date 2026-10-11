@@ -38,6 +38,8 @@ const els = {
   engineNote: $('#engineNote'),
   speak: $('#speak'),
   clauseFirst: $('#clauseFirst'),
+  micSelect: $('#micSelect'),
+  micNote: $('#micNote'),
   empty: $('#empty'),
 };
 
@@ -80,6 +82,8 @@ const S = {
   arming: null,
   speak: store.get('speak', true),
   clauseFirst: store.get('clauseFirst', true),
+  micId: store.get('micId', ''), // '' = follow the system default
+  micLabel: store.get('micLabel', ''),
   voice: store.get('voice', ''),
   engine: store.get('engine', 'say'),
   browserVoice: store.get('browserVoice', ''),
@@ -159,12 +163,17 @@ function offlineReason() {
 const mic = { name: null, source: null, changed: false };
 const WIRELESS = /iphone|ipad|airpods|bluetooth|hands-free|headset/i;
 
+// source: 'recording' (the device a recording really used), 'default' (the
+// system default) or 'chosen' (picked in the Voice panel, not yet used).
 function setMic(name, source) {
   if (!name) return;
   if (mic.name && name !== mic.name) {
-    mic.changed = true;
-    systemNote(source === 'recording' ? `Microphone changed: ${mic.name} → ${name}` : `The default microphone is now ${name} (was ${mic.name})`, 'err');
-  } else if (mic.source === 'recording' && source === 'default') {
+    // A switch you made yourself needs no warning; one you didn't make does.
+    if (source !== 'chosen') {
+      mic.changed = true;
+      systemNote(source === 'recording' ? `Microphone changed: ${mic.name} → ${name}` : `The default microphone is now ${name} (was ${mic.name})`, 'err');
+    }
+  } else if (mic.source === 'recording' && source !== 'recording') {
     return; // same device, and "used for your last recording" is the stronger fact
   }
   mic.name = name;
@@ -175,18 +184,34 @@ function setMic(name, source) {
 // Before the first recording, and whenever devices are plugged in or removed,
 // ask the browser which input is the system default. Names stay hidden until
 // the microphone has been allowed once.
+// It also fills the microphone menu in the Voice panel.
 async function checkDefaultMic() {
-  try {
-    const inputs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput');
-    setMic(micName((inputs.find((d) => d.deviceId === 'default') || inputs[0])?.label), 'default');
-  } catch { /* device list unavailable */ }
+  let inputs = [];
+  try { inputs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput'); } catch { /* device list unavailable */ }
+  const defaultName = micName((inputs.find((d) => d.deviceId === 'default') || inputs[0])?.label);
+  // 'default' and 'communications' are aliases for devices that are also listed by themselves.
+  const real = inputs.filter((d) => d.label && d.deviceId !== 'default' && d.deviceId !== 'communications');
+  const chosen = real.find((d) => d.deviceId === S.micId);
+  const options = [`<option value="">System default${defaultName ? ` (now ${escapeHtml(defaultName)})` : ''}</option>`]
+    .concat(real.map((d) => `<option value="${escapeAttr(d.deviceId)}">${escapeHtml(micName(d.label))}</option>`));
+  if (S.micId && !chosen) options.push(`<option value="${escapeAttr(S.micId)}">${escapeHtml(S.micLabel || 'Chosen microphone')} (not connected)</option>`);
+  els.micSelect.innerHTML = options.join('');
+  els.micSelect.value = S.micId;
+  els.micNote.hidden = false;
+  els.micNote.textContent = !real.length ? 'The browser lists microphones by name after the first recording.'
+    : S.micId && !chosen ? 'Your chosen microphone isn’t connected. Q won’t record until it is back or you pick another.'
+    : S.micId ? 'Q records from this microphone only, whatever the system default is.'
+    : 'Q follows the system default, which macOS can switch (for example to a nearby iPhone).';
+  if (S.micId) { if (chosen) setMic(micName(chosen.label), 'chosen'); }
+  else setMic(defaultName, 'default');
 }
 
 function micRow() {
   if (!mic.name) return row('Mic', 'not known yet', { kind: 'idle', text: 'Unknown' }, 'the browser shows its name after the first recording');
   const note = WIRELESS.test(mic.name) ? ' · phone or wireless mic: often slower to start and lower quality' : '';
-  const sub = (mic.source === 'recording' ? 'used for your last recording' : 'system default · used on the next press') + (mic.changed ? ' · changed this session' : '') + note;
-  const badge = note ? { kind: 'warn', text: 'Check' } : mic.source === 'recording' ? { kind: 'ok', text: 'In use' } : { kind: 'idle', text: 'Default' };
+  const how = S.micId ? 'your choice' : 'system default';
+  const sub = (mic.source === 'recording' ? `used for your last recording · ${how}` : `${how} · used on the next press`) + (mic.changed ? ' · changed this session' : '') + note;
+  const badge = note ? { kind: 'warn', text: 'Check' } : mic.source === 'recording' ? { kind: 'ok', text: 'In use' } : { kind: 'idle', text: S.micId ? 'Chosen' : 'Default' };
   return row('Mic', escapeHtml(mic.name), badge, sub);
 }
 
@@ -524,9 +549,23 @@ async function pttDown() {
   unlockSpeech();
   els.mic.classList.add('held');
   setPhase('arming');
-  S.arming = recorder.start()
-    .then(() => { setMic(recorder.deviceName, 'recording'); if (S.ptt) setPhase('listening'); })
-    .catch((err) => { S.ptt = false; els.mic.classList.remove('held'); fail(`Microphone unavailable: ${err.message}`); throw err; });
+  S.arming = recorder.start(S.micId || undefined)
+    .then(() => {
+      const firstNames = !els.micSelect.options.length || els.micSelect.options.length === 1;
+      setMic(recorder.deviceName, 'recording');
+      if (firstNames) checkDefaultMic(); // device names are available from now on
+      if (S.ptt) setPhase('listening');
+    })
+    .catch((err) => {
+      S.ptt = false;
+      els.mic.classList.remove('held');
+      // No quiet fallback to another microphone: that is the problem the menu exists to prevent.
+      const missing = S.micId && ['OverconstrainedError', 'NotFoundError'].includes(err.name);
+      fail(missing ? `Your chosen microphone (${S.micLabel || 'unknown'}) isn’t connected. Reconnect it or pick another under Voice.` : `Microphone unavailable: ${err.message}`);
+      if (missing) checkDefaultMic();
+      throw err;
+    });
+  S.arming.catch(() => {}); // pttUp reads the failure; this only stops an "unhandled" console error
 }
 
 async function pttUp() {
@@ -712,6 +751,14 @@ els.clearRuns.addEventListener('click', () => {
   renderHistory();
 });
 
+els.micSelect.addEventListener('change', () => {
+  S.micId = els.micSelect.value;
+  S.micLabel = S.micId ? els.micSelect.selectedOptions[0].textContent.replace(/ \(not connected\)$/, '') : '';
+  store.set('micId', S.micId);
+  store.set('micLabel', S.micLabel);
+  mic.source = null; // the last recording no longer says what the next one will use
+  checkDefaultMic();
+});
 els.clauseFirst.checked = S.clauseFirst;
 els.clauseFirst.addEventListener('change', () => { S.clauseFirst = els.clauseFirst.checked; store.set('clauseFirst', S.clauseFirst); });
 els.speak.checked = S.speak;

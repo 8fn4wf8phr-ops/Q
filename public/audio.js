@@ -18,9 +18,11 @@ export const micName = (label) => (label ? label.replace(/^Default - /, '').trim
 export class Recorder {
   constructor() { this.active = false; }
 
-  async start() {
+  // deviceId: record from exactly that microphone, or fail. Without it the
+  // browser uses the system default, which macOS can change on its own.
+  async start(deviceId) {
     this.stream = await navigator.mediaDevices.getUserMedia({
-      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true, ...(deviceId ? { deviceId: { exact: deviceId } } : {}) },
     });
     this.ctx = new AC();
     const src = this.ctx.createMediaStreamSource(this.stream);
