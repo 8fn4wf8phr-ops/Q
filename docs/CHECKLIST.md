@@ -82,7 +82,8 @@ Covers the whole roadmap in `BRIEF.md`, v0.1 through v1.1+. v0.1 is itemised bec
 - [ ] First quality test (20-prompt blind comparison, D-008): not yet run blind. Needs a second set of replies (another local model or a cloud reference) and the thresholds below.
 - [x] Local-vs-hybrid thresholds written down and adopted (D-027): 40% preferred or tied, 5 of 6 honesty rules, warm p90 under 2.5 s.
 - [x] Replies generated for `llama3.2:3b` and `qwen2.5:3b`; cloud-reference template created.
-- [ ] Jacquez: fill in the cloud template, then do the blind comparisons in `/quality.html`.
+- [x] Jacquez: blind comparison of the two local models done (see v0.2).
+- [ ] Jacquez: fill in the cloud template and compare it against `llama3.2.json`; that is the comparison D-027 applies to.
 
 # v0.2 — tune personality, continuity and speed; blind quality evaluation; better macOS voice
 
@@ -107,7 +108,9 @@ Nothing here is finished. Some of it was started early while fixing v0.1.
 - [ ] Speed: the first words can be clipped because the mic opens fresh on every press.
 - [ ] Continuity within a conversation is limited to the last 4–8 turns (`trimHistory()`); nothing carries across sessions.
 - [ ] Blind pairwise quality evaluation (D-008). Not started; no prompts, no harness.
-- [ ] Compare 2–3 local models (D-009). `qwen2.5:3b` is installed and its quality replies are generated; the blind comparison against `llama3.2:3b` is not done.
+- [x] Compare local models (D-009), first pass: blind comparison by Jacquez, 2026-10-11. `llama3.2:3b` preferred 9, `qwen2.5:3b` 7, about the same 4 (55% to 45%). No reason to switch. Rule counts from that session are unusable (page fault).
+- [x] Comparison page fixed so a rule has to be judged explicitly (2026-10-11).
+- [ ] Redo the rule checks with the fixed page.
 - [ ] Local-vs-hybrid thresholds written down before the quality test. Still an open question in `DECISIONS.md`.
 - [x] Better voice, first step: Samantha is the default (D-018).
 - [ ] Better voice, second step: evaluate Enhanced or Premium voices (D-013). None are installed on this Mac; the helper already labels them when they are.
