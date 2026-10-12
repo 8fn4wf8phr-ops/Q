@@ -36,6 +36,9 @@ const DEFAULTS = {
   // spelling of names and jargon; set to '' to turn it off.
   whisperPrompt: 'Hey Q. Yo Q, what\'s good? Q, open VS Code. Ollama, Whisper, MacBook Air, GitHub.',
   whisperPort: 4142,
+  // A second Whisper model to compare against, started only when the page asks for it.
+  whisperCompareModel: 'models/ggml-small.en.bin',
+  whisperComparePort: 4143,
   tts: 'helper', // 'helper' (falls back to 'say' if not built) | 'say' | 'piper' | 'none'
   speechHelperBin: 'bin/q-speak',
   sayVoice: 'Samantha', // falls back to the system voice if not installed
@@ -47,7 +50,7 @@ const DEFAULTS = {
 const CONFIG = await loadConfig();
 // Raised whenever the page starts needing something new from the server, so a
 // page served by a server that hasn't been restarted can say so.
-const API_LEVEL = 3;
+const API_LEVEL = 4;
 const VERSION = await readFile(path.join(ROOT, 'package.json'), 'utf8').then((t) => JSON.parse(t).version).catch(() => null);
 let stopping = false;
 
@@ -61,7 +64,7 @@ async function loadConfig() {
   const cfg = { ...DEFAULTS, ...user };
   if (process.env.Q_MODEL) cfg.model = process.env.Q_MODEL;
   if (process.env.Q_PORT) cfg.port = Number(process.env.Q_PORT);
-  for (const key of ['whisperModel', 'piperModel', 'speechHelperBin']) {
+  for (const key of ['whisperModel', 'whisperCompareModel', 'piperModel', 'speechHelperBin']) {
     if (cfg[key] && !path.isAbsolute(cfg[key])) cfg[key] = path.join(ROOT, cfg[key]);
   }
   return cfg;
@@ -168,19 +171,63 @@ function cleanTranscript(text) {
     .trim();
 }
 
+// One transcription request to a whisper-server on the given port.
+async function whisperRequest(port, wav) {
+  const started = performance.now();
+  const form = new FormData();
+  form.append('file', new Blob([wav], { type: 'audio/wav' }), 'speech.wav');
+  form.append('response_format', 'json');
+  form.append('temperature', '0');
+  if (CONFIG.whisperPrompt) form.append('prompt', CONFIG.whisperPrompt);
+  const r = await fetch(`http://127.0.0.1:${port}/inference`, { method: 'POST', body: form });
+  if (!r.ok) throw new Error(`whisper-server HTTP ${r.status}`);
+  const data = await r.json();
+  return { text: cleanTranscript(data.text || ''), ms: performance.now() - started, mode: 'server' };
+}
+
+// ---------- second Whisper model, for comparing on real recordings ----------
+// Off unless the page switches it on. While on, the page sends each recording
+// to both models; the turn itself still runs on the main one. The same audio,
+// the same vocabulary hint, a different model.
+
+const cmp = { available: false, proc: null, ready: false, starting: null };
+
+async function initCompare() {
+  cmp.available = !!stt.serverPath && (await exists(CONFIG.whisperCompareModel));
+}
+
+function startCompare() {
+  if (cmp.proc) return cmp.starting;
+  const proc = spawn(stt.serverPath, [
+    '-m', CONFIG.whisperCompareModel,
+    '--host', '127.0.0.1',
+    '--port', String(CONFIG.whisperComparePort),
+    '-t', String(CONFIG.whisperThreads),
+  ], { stdio: ['ignore', 'ignore', 'ignore'] });
+  cmp.proc = proc;
+  proc.on('error', () => {});
+  proc.on('exit', () => { if (cmp.proc === proc) { cmp.proc = null; cmp.ready = false; } });
+  cmp.starting = (async () => {
+    for (let i = 0; i < 120 && cmp.proc === proc; i++) {
+      try {
+        const r = await fetch(`http://127.0.0.1:${CONFIG.whisperComparePort}/`, { signal: AbortSignal.timeout(500) });
+        if (r.status < 500) { cmp.ready = true; return true; }
+      } catch { /* not up yet */ }
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    return false;
+  })();
+  return cmp.starting;
+}
+
+function stopCompare() {
+  cmp.proc?.kill();
+  cmp.proc = null;
+  cmp.ready = false;
+}
+
 async function transcribe(wav) {
-  if (stt.mode === 'server' && stt.serverReady) {
-    const started = performance.now();
-    const form = new FormData();
-    form.append('file', new Blob([wav], { type: 'audio/wav' }), 'speech.wav');
-    form.append('response_format', 'json');
-    form.append('temperature', '0');
-    if (CONFIG.whisperPrompt) form.append('prompt', CONFIG.whisperPrompt);
-    const r = await fetch(`http://127.0.0.1:${CONFIG.whisperPort}/inference`, { method: 'POST', body: form });
-    if (!r.ok) throw new Error(`whisper-server HTTP ${r.status}`);
-    const data = await r.json();
-    return { text: cleanTranscript(data.text || ''), ms: performance.now() - started, mode: 'server' };
-  }
+  if (stt.mode === 'server' && stt.serverReady) return whisperRequest(CONFIG.whisperPort, wav);
   if (stt.mode === 'cli') {
     return withTmp(async (dir) => {
       const file = path.join(dir, 'speech.wav');
@@ -487,6 +534,17 @@ async function streamChatInner(req, res) {
     .map((m) => ({ role: m.role, content: stamped(m) }));
   const system = await systemPrompt();
 
+  // The quality test (scripts/quality-run.mjs) sends its prompts through this
+  // same pipeline, optionally with another installed model. Such requests are
+  // marked so they don't count as turns for keep-warm.
+  const bench = body.benchmark === true;
+  let model = CONFIG.model;
+  if (bench && typeof body.model === 'string' && body.model !== CONFIG.model) {
+    const tags = await fetch(`${CONFIG.ollamaUrl}/api/tags`, { signal: AbortSignal.timeout(3000) }).then((r) => r.json()).catch(() => ({}));
+    if (!(tags.models || []).some((m) => m.name === body.model)) throw Object.assign(new Error(`model not installed in Ollama: ${body.model}`), { status: 400 });
+    model = body.model;
+  }
+
   const controller = new AbortController();
   res.on('close', () => { if (!res.writableEnded) controller.abort(); });
   res.writeHead(200, { 'content-type': 'application/x-ndjson', 'cache-control': 'no-store' });
@@ -513,7 +571,7 @@ async function streamChatInner(req, res) {
       signal: controller.signal,
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        model: CONFIG.model,
+        model,
         stream: true,
         keep_alive: CONFIG.keepAlive,
         options: { num_ctx: CONFIG.numCtx, temperature: CONFIG.temperature },
@@ -541,15 +599,18 @@ async function streamChatInner(req, res) {
         if (msg.done) {
           const held = echo.end();
           if (held) { said += held; send({ type: 'token', text: held }); }
-          lastModelUse = keep.lastTurnAt = Date.now();
-          keep.messages = [{ role: 'system', content: system }, ...trimmed, ...(said ? [{ role: 'assistant', content: said }] : [])];
+          lastModelUse = Date.now();
+          if (!bench) {
+            keep.lastTurnAt = lastModelUse;
+            keep.messages = [{ role: 'system', content: system }, ...trimmed, ...(said ? [{ role: 'assistant', content: said }] : [])];
+          }
           const pingsSinceLastTurn = keep.sinceTurn;
           keep.sinceTurn = 0;
           const evalMs = (msg.eval_duration || 0) / 1e6;
           send({
             type: 'done',
             stats: {
-              model: CONFIG.model,
+              model,
               serverFirstTokenMs: firstTokenMs,
               totalMs: performance.now() - started,
               loadMs: (msg.load_duration || 0) / 1e6,
@@ -769,6 +830,7 @@ const server = http.createServer(async (req, res) => {
         history: { turns: CONFIG.historyTurns, chars: CONFIG.historyChars },
         ollama,
         warmup: { state: warm.state, ms: warm.ms, error: warm.error },
+        compare: { available: cmp.available, on: !!cmp.proc, ready: cmp.ready, model: path.basename(CONFIG.whisperCompareModel) },
         keepWarm: { until: keepWarmUntil() > Date.now() ? keepWarmUntil() : null, hadTurn: keep.lastTurnAt > 0, everySeconds: CONFIG.keepWarmSeconds, minutes: CONFIG.keepWarmMinutes },
         stt: { mode: stt.mode, ready: stt.mode === 'cli' || (stt.mode === 'server' && stt.serverReady), model: path.basename(CONFIG.whisperModel), error: stt.mode === 'none' ? stt.lastError : null },
         tts: { engine: tts.engine, available: tts.available, error: tts.available ? null : tts.lastError, note: tts.note, defaultVoice: tts.voices.some((v) => v.name === CONFIG.sayVoice) ? CONFIG.sayVoice : null },
@@ -792,6 +854,18 @@ const server = http.createServer(async (req, res) => {
       const wav = await readBody(req, 25_000_000);
       return json(res, 200, await transcribe(wav));
     }
+    if (req.method === 'POST' && pathname === '/api/compare') {
+      const { on } = JSON.parse((await readBody(req, 1000)).toString('utf8') || '{}');
+      if (on) {
+        if (!cmp.available) return json(res, 400, { error: `comparison model not found at ${CONFIG.whisperCompareModel}, or whisper-server is missing` });
+        await startCompare();
+      } else stopCompare();
+      return json(res, 200, { on: !!cmp.proc, ready: cmp.ready });
+    }
+    if (req.method === 'POST' && pathname === '/api/transcribe-compare') {
+      if (!cmp.ready) return json(res, 409, { error: 'comparison model is not running' });
+      return json(res, 200, await whisperRequest(CONFIG.whisperComparePort, await readBody(req, 25_000_000)));
+    }
     if (req.method === 'POST' && pathname === '/api/chat') return await streamChat(req, res);
     if (req.method === 'POST' && pathname === '/api/speak') {
       const { text, voice } = JSON.parse((await readBody(req, 100_000)).toString('utf8') || '{}');
@@ -809,6 +883,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 await Promise.all([initWhisper(), initTts()]);
+await initCompare();
 server.listen(CONFIG.port, '127.0.0.1', async () => {
   const o = await ollamaStatus();
   console.log(`\n  Q is up → http://127.0.0.1:${CONFIG.port}\n`);
@@ -818,7 +893,7 @@ server.listen(CONFIG.port, '127.0.0.1', async () => {
   if (o.reachable && o.modelInstalled) startWarmup().then((w) => console.log(w ? `  model loaded in ${w.loadMs.toFixed(0)} ms, system prompt primed in ${w.promptMs.toFixed(0)} ms\n` : `  model warm-up failed: ${warm.error}\n`));
 });
 
-const shutdown = () => { stopping = true; stt.serverProc?.kill(); helper.proc?.kill(); process.exit(0); };
+const shutdown = () => { stopping = true; stt.serverProc?.kill(); cmp.proc?.kill(); helper.proc?.kill(); process.exit(0); };
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 process.on('SIGHUP', shutdown); // the Terminal window was closed

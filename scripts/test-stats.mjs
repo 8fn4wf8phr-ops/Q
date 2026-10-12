@@ -1,7 +1,7 @@
 // Tests for latency statistics and the run-data export (public/stats.js).
 //   npm test
 
-import { percentile, summarize, cleanRun, buildExport, kindOf, MIN_FOR_P90, IDLE_MS } from '../public/stats.js';
+import { percentile, summarize, cleanRun, buildExport, kindOf, sameWords, MIN_FOR_P90, IDLE_MS } from '../public/stats.js';
 
 let failed = 0;
 function check(name, ok, detail = '') {
@@ -76,6 +76,13 @@ const mics = buildExport([{ ...run(1), mic: 'MacBook Air Microphone' }, { ...run
 check('each run keeps its microphone name', mics.runs[0].mic === 'MacBook Air Microphone' && mics.runs[1].mic === 'Jacquez’s iPhone Microphone');
 check('the header lists each microphone once, in order of use', same(mics.header.microphones.slice(0, 2), ['MacBook Air Microphone', 'Jacquez’s iPhone Microphone']));
 check('a non-text microphone value is dropped and a long one is cut to 80 characters', mics.runs[3].mic === null && mics.runs[4].mic.length === 80);
+console.log('\nWhisper comparison');
+check('same words, different case and punctuation, count as the same', sameWords('What time is it?', 'what time is it'));
+check('a different word counts as different', !sameWords('Is Ollama still running?', 'Is Olima still running?'));
+check('an empty transcript differs from a real one', !sameWords('', 'Hello') && sameWords('', ' '));
+const cm = buildExport([{ ...run(1), sttAltMs: 455.2, compare: 'alt' }, { ...run(2), compare: 'the other one' }], { compareModel: 'ggml-small.en.bin', compareTally: { same: 7, base: 1, alt: 3, neither: 1, text: SECRET } });
+check('each run keeps the verdict and the second model’s time', cm.runs[0].compare === 'alt' && cm.runs[0].sttAltMs === 455.2 && cm.runs[1].compare === null);
+check('the header carries the tally as counts only', same(cm.header.compareTally, { same: 7, base: 1, alt: 3, neither: 1 }) && !JSON.stringify(cm).includes(SECRET));
 check('garbage input does not throw', same(buildExport(null).runs, []) && cleanRun(undefined).total === null);
 
 console.log(failed ? `\n${failed} case(s) failed\n` : '\nAll cases passed\n');

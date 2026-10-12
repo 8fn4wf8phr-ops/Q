@@ -8,7 +8,7 @@
   "scripts": {
     "start": "node server.js",
     "setup": "bash scripts/setup.sh",
-    "test": "node scripts/test-level.mjs && node scripts/test-stats.mjs && node scripts/test-chunk.mjs",
+    "test": "node scripts/test-level.mjs && node scripts/test-stats.mjs && node scripts/test-chunk.mjs && node scripts/test-quality.mjs",
     "build:speech": "mkdir -p bin && swiftc -O -swift-version 5 speech/q-speak.swift -o bin/q-speak"
   }
 }

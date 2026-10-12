@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Q · blind quality test</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    .qt { max-width: 980px; margin: 0 auto; padding: 28px 22px 60px; }
+    .qt h1 { font-size: 20px; margin: 0 0 4px; }
+    .qt .lead { color: var(--text-2); font-size: 13px; margin: 0 0 18px; }
+    .qt .card { margin-bottom: 14px; }
+    .pick { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .pick label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--text-2); }
+    .ask { font-size: 15px; }
+    .ask p { margin: 0 0 6px; }
+    .ask .earlier { color: var(--text-3); font-size: 13px; }
+    .rule { margin: 10px 0 0; font-size: 12.5px; color: var(--amber); }
+    .sides { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .side h3 { margin: 0 0 8px; font-size: 12px; letter-spacing: 0.12em; color: var(--text-3); }
+    .side .reply { white-space: pre-wrap; font-size: 15px; line-height: 1.5; min-height: 80px; }
+    .side .tools { display: flex; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; font-size: 12px; color: var(--text-2); }
+    .votes { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 4px; }
+    .votes .ghost { font-size: 13px; padding: 9px 16px; }
+    table.result { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+    table.result th, table.result td { text-align: left; padding: 7px 10px; border-bottom: 1px solid rgba(110, 200, 255, 0.1); }
+    table.result th { color: var(--text-3); font-weight: 500; }
+    @media (max-width: 720px) { .pick, .sides { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="backdrop" aria-hidden="true"></div>
+  <main class="qt">
+    <h1>Blind quality test</h1>
+    <p class="lead">Two sets of replies to the same prompts, shown side by side without names and in random order. Pick the better one each time. Names are revealed at the end.</p>
+
+    <section class="glass card" id="setup">
+      <h2>Choose two result files</h2>
+      <p class="hint" style="margin:0 0 12px">Made with <code>node scripts/quality-run.mjs --label …</code>; they are in <code>quality/out/</code>. The files are read in this browser and not uploaded anywhere.</p>
+      <div class="pick">
+        <label>First run <input id="fileA" type="file" accept="application/json,.json" /></label>
+        <label>Second run <input id="fileB" type="file" accept="application/json,.json" /></label>
+      </div>
+      <p class="hint" id="setupNote" aria-live="polite"></p>
+      <button id="begin" class="ghost" type="button" disabled>Start</button>
+    </section>
+
+    <section id="round" hidden>
+      <div class="glass card ask">
+        <h2><span id="progress"></span> <span class="h2sub" id="category"></span></h2>
+        <div id="question"></div>
+        <p class="rule" id="rule" hidden></p>
+      </div>
+      <div class="sides">
+        <div class="glass card side"><h3>LEFT</h3><div class="reply" id="left"></div><div class="tools"><button class="ghost" type="button" data-hear="left">Hear it</button><label class="toggle" data-pass="left" hidden><input type="checkbox" /><span>Meets the rule above</span></label></div></div>
+        <div class="glass card side"><h3>RIGHT</h3><div class="reply" id="right"></div><div class="tools"><button class="ghost" type="button" data-hear="right">Hear it</button><label class="toggle" data-pass="right" hidden><input type="checkbox" /><span>Meets the rule above</span></label></div></div>
+      </div>
+      <div class="votes">
+        <button class="ghost" type="button" data-vote="left">Left is better</button>
+        <button class="ghost" type="button" data-vote="tie">About the same</button>
+        <button class="ghost" type="button" data-vote="right">Right is better</button>
+      </div>
+    </section>
+
+    <section class="glass card" id="done" hidden>
+      <h2>Result</h2>
+      <div id="result"></div>
+      <div class="runbtns"><button id="copyResult" class="ghost" type="button">Copy result</button><span class="hnote" id="copyResultNote" aria-live="polite"></span></div>
+      <textarea id="resultText" class="rundata" rows="6" readonly hidden aria-label="Result"></textarea>
+    </section>
+  </main>
+  <script type="module" src="quality.js"></script>
+</body>
+</html>

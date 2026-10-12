@@ -1,11 +1,11 @@
 import { QCore } from './core.js';
 import { Recorder, Player, BrowserSpeaker, blobToWav16k, micName } from './audio.js';
 import { takeChunks } from './chunk.js';
-import { SCHEMA, MAX_RUNS, MIN_FOR_P90, IDLE_MS, kindOf, summarize, buildExport } from './stats.js';
+import { SCHEMA, MAX_RUNS, MIN_FOR_P90, IDLE_MS, kindOf, sameWords, summarize, buildExport } from './stats.js';
 
 // What this page needs from the server (server.js API_LEVEL). A server started
 // before an update keeps serving new pages until it is restarted.
-const NEEDS_API = 3;
+const NEEDS_API = 4;
 
 const $ = (sel) => document.querySelector(sel);
 const els = {
@@ -40,6 +40,9 @@ const els = {
   clauseFirst: $('#clauseFirst'),
   micSelect: $('#micSelect'),
   micNote: $('#micNote'),
+  compare: $('#compare'),
+  compareNote: $('#compareNote'),
+  compareReset: $('#compareReset'),
   empty: $('#empty'),
 };
 
@@ -84,6 +87,7 @@ const S = {
   clauseFirst: store.get('clauseFirst', true),
   micId: store.get('micId', ''), // '' = follow the system default
   micLabel: store.get('micLabel', ''),
+  tally: store.get('tally', { same: 0, base: 0, alt: 0, neither: 0 }), // Whisper comparison score: counts only
   voice: store.get('voice', ''),
   engine: store.get('engine', 'say'),
   browserVoice: store.get('browserVoice', ''),
@@ -273,6 +277,7 @@ async function refreshStatus() {
     S.status = null;
   }
   renderStatus();
+  renderTally();
   if (['boot', 'offline', 'warming', 'idle'].includes(S.phase)) settle();
   if (warming()) warmPoll = setTimeout(refreshStatus, 1000);
 }
@@ -343,6 +348,68 @@ function systemNote(text, kind = '') {
   els.log.scrollTop = els.log.scrollHeight;
 }
 
+// ---------- Whisper comparison ----------
+// With comparison mode on, a second Whisper model transcribes the same
+// recording. If the two disagree, both versions are shown and you say which
+// was right. Only the score is kept; the transcripts are never stored.
+
+const modelName = (file) => String(file || '').replace(/^ggml-|\.bin$/g, '');
+
+function renderTally() {
+  const c = S.status?.compare;
+  const t = S.tally;
+  const total = t.same + t.base + t.alt + t.neither;
+  els.compare.disabled = !c?.available;
+  els.compare.checked = !!c?.on;
+  els.compareReset.hidden = !total;
+  if (!c) { els.compareNote.textContent = ''; return; }
+  const alt = modelName(c.model);
+  const main = modelName(S.status.stt?.model);
+  const score = total ? ` Score over ${total} turn${total > 1 ? 's' : ''}: same ${t.same} · ${main} right ${t.base} · ${alt} right ${t.alt} · neither ${t.neither}.` : '';
+  els.compareNote.textContent = (!c.available ? `Needs ${c.model} in the models folder.`
+    : c.on && !c.ready ? `Starting ${alt}…`
+    : c.on ? `On: ${alt} also hears each recording (about 600 MB more memory, and it can slow turns; switch off for benchmarks).`
+    : `Off. When on, ${alt} hears each recording too and you mark which was right.`) + score;
+}
+
+function judge(t, verdict) {
+  t.compare = verdict;
+  S.tally[verdict]++;
+  store.set('tally', S.tally);
+  if (t.run) { t.run.compare = verdict; t.run.sttAltMs = t.sttAltMs ?? null; store.set('runs', S.runs); }
+  renderTally();
+}
+
+function showComparison(t, bubbleEl, mainText, alt) {
+  if (!alt || !bubbleEl.isConnected) return;
+  t.sttAltMs = alt.ms;
+  const altName = modelName(S.status?.compare?.model);
+  const mainName = modelName(S.status?.stt?.model);
+  const box = document.createElement('div');
+  box.className = 'cmp';
+  bubbleEl.querySelector('.bubble').appendChild(box);
+  if (sameWords(mainText, alt.text)) {
+    box.textContent = `${altName} heard the same · ${(alt.ms / 1000).toFixed(2)} s`;
+    judge(t, 'same');
+    return;
+  }
+  const heard = document.createElement('span');
+  heard.textContent = `${altName} heard: “${alt.text || '(nothing)'}” · ${(alt.ms / 1000).toFixed(2)} s`;
+  const ask = document.createElement('span');
+  ask.className = 'cmpask';
+  ask.append('Which was right? ');
+  for (const [verdict, label] of [['base', mainName], ['alt', altName], ['neither', 'neither']]) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'ghost';
+    b.textContent = label;
+    b.addEventListener('click', () => { ask.textContent = `You marked: ${label}`; judge(t, verdict); });
+    ask.appendChild(b);
+  }
+  box.append(heard, ask);
+  els.log.scrollTop = els.log.scrollHeight;
+}
+
 // ---------- streaming speech ----------
 
 // `say` requests run one at a time: parallel `say` processes slow each other,
@@ -403,7 +470,8 @@ async function runTurn(text) {
   const t = turn;
   S.messages.push({ role: 'user', content: text, at: Date.now() });
   t.userPushed = true;
-  addBubble('user', text, t.source === 'voice' ? `heard · ${(t.sttMs / 1000).toFixed(2)} s` : '');
+  const mine = addBubble('user', text, t.source === 'voice' ? `heard · ${(t.sttMs / 1000).toFixed(2)} s` : '');
+  if (t.alt) t.alt.then((a) => showComparison(t, mine, text, a));
   const bubble = addBubble('q');
   t.bubble = bubble;
   bubble.classList.add('streaming');
@@ -511,6 +579,8 @@ function recordTurn(t) {
     firstChunk: t.firstChunk ?? null,
     mic: t.mic ?? null,
     pings: st.pingsSinceLastTurn ?? null,
+    sttAltMs: t.sttAltMs ?? null,
+    compare: t.compare ?? null,
     sys: t.sys ?? null,
   };
   S.runs = [...S.runs, t.run].slice(-MAX_RUNS);
@@ -604,6 +674,10 @@ async function pttUp() {
       return;
     }
     const tSent = performance.now();
+    // Comparison mode: the second model hears the same recording. The turn doesn't wait for it.
+    t.alt = S.status?.compare?.ready
+      ? fetch('/api/transcribe-compare', { method: 'POST', headers: { 'content-type': 'audio/wav' }, body: wav }).then((x) => (x.ok ? x.json() : null)).catch(() => null)
+      : null;
     const r = await fetch('/api/transcribe', { method: 'POST', headers: { 'content-type': 'audio/wav' }, body: wav });
     const data = await r.json();
     if (turn !== t) return; // interrupted while transcribing
@@ -696,6 +770,8 @@ function runHeader() {
     historyTurns: s?.history?.turns,
     historyChars: s?.history?.chars,
     modelMemoryMb: s?.ollama?.loadedVramBytes != null ? s.ollama.loadedVramBytes / 1024 ** 2 : null,
+    compareModel: S.tally.same + S.tally.base + S.tally.alt + S.tally.neither ? s?.compare?.model : null,
+    compareTally: S.tally.same + S.tally.base + S.tally.alt + S.tally.neither ? S.tally : null,
   };
 }
 
@@ -768,6 +844,22 @@ els.micSelect.addEventListener('change', () => {
   store.set('micLabel', S.micLabel);
   mic.source = null; // the last recording no longer says what the next one will use
   checkDefaultMic();
+});
+els.compare.addEventListener('change', async () => {
+  const on = els.compare.checked;
+  els.compare.disabled = true;
+  els.compareNote.textContent = on ? 'Starting the second model…' : 'Stopping the second model…';
+  try {
+    const r = await fetch('/api/compare', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ on }) });
+    if (!r.ok) systemNote((await r.json().catch(() => ({}))).error || `compare HTTP ${r.status}`, 'err');
+  } catch (err) { systemNote(`Couldn’t switch comparison mode: ${err.message}`, 'err'); }
+  await refreshStatus();
+});
+els.compareReset.addEventListener('click', () => {
+  if (!confirm('Reset the Whisper comparison score?')) return;
+  S.tally = { same: 0, base: 0, alt: 0, neither: 0 };
+  store.set('tally', S.tally);
+  renderTally();
 });
 els.clauseFirst.checked = S.clauseFirst;
 els.clauseFirst.addEventListener('change', () => { S.clauseFirst = els.clauseFirst.checked; store.set('clauseFirst', S.clauseFirst); });

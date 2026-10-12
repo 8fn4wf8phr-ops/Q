@@ -16,11 +16,12 @@ export const IDLE_MS = 180_000;
 const NUMBERS = [
   'at', 'total', 'stt', 'firstToken', 'firstSentence', 'voiceSynth',
   'promptMs', 'promptTokens', 'loadMs', 'warmupWaitMs', 'evalTokens', 'tokPerSec',
-  'captureMs', 'levelDb', 'loudMs', 'turnIndex', 'idleMs', 'pings',
+  'captureMs', 'levelDb', 'loudMs', 'turnIndex', 'idleMs', 'pings', 'sttAltMs',
 ];
 const ENUMS = {
   kind: ['warm', 'idle', 'cold'],
   firstChunk: ['clause', 'sentence'],
+  compare: ['same', 'base', 'alt', 'neither'], // two Whisper models on the same recording; who was right
   source: ['voice', 'text'],
   engine: ['helper', 'say', 'piper', 'browser', 'none'],
 };
@@ -33,6 +34,8 @@ const SYS_ENUMS = { pressure: ['normal', 'warning', 'critical'], power: ['ac', '
 const SYS_BOOLS = ['vscodeRunning'];
 const HEADER_STRINGS = ['qVersion', 'model', 'whisperModel', 'serverVoiceEngine', 'voiceEngine', 'browser'];
 const HEADER_NUMBERS = ['historyTurns', 'historyChars', 'modelMemoryMb'];
+const HEADER_STRINGS_OPTIONAL = ['compareModel'];
+const TALLY = ['same', 'base', 'alt', 'neither'];
 
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v * 10) / 10 : null);
 const oneOf = (v, allowed) => (allowed.includes(v) ? v : null);
@@ -42,6 +45,12 @@ const oneOf = (v, allowed) => (allowed.includes(v) ? v : null);
 export function kindOf(run) {
   if (run?.cold === true) return 'cold';
   return typeof run?.idleMs === 'number' && run.idleMs >= IDLE_MS ? 'idle' : 'warm';
+}
+
+// Two transcripts count as the same if their words match, ignoring case and punctuation.
+export function sameWords(a, b) {
+  const words = (t) => String(t ?? '').toLowerCase().replace(/[^\p{L}\p{N}' ]/gu, ' ').split(/\s+/).filter(Boolean).join(' ');
+  return words(a) === words(b);
 }
 
 // Nearest-rank percentile: the smallest value with at least p of the data at or below it.
@@ -112,6 +121,10 @@ export function buildExport(runs, header = {}, now = new Date()) {
   const head = {};
   for (const k of HEADER_STRINGS) head[k] = typeof header[k] === 'string' ? header[k].slice(0, 200) : null;
   for (const k of HEADER_NUMBERS) head[k] = num(header[k]);
+  for (const k of HEADER_STRINGS_OPTIONAL) head[k] = typeof header[k] === 'string' ? header[k].slice(0, 80) : null;
+  // Running score of the Whisper comparison: counts only, never the transcripts.
+  head.compareTally = header.compareTally && typeof header.compareTally === 'object'
+    ? Object.fromEntries(TALLY.map((k) => [k, num(header.compareTally[k]) ?? 0])) : null;
   const last = [...list].reverse().find((r) => r.sys)?.sys;
   // Every microphone used in these runs, most recent last.
   head.microphones = [...new Set(list.map((r) => r.mic).filter(Boolean))];
