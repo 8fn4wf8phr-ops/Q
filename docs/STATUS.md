@@ -91,7 +91,7 @@ _Claude Code updates this after every change. Labels: **proposed → approved �
 5. **Voice synthesis is the main bottleneck.** Each sentence spawns a new `say` process, which costs 1.3–4 s before any audio exists, regardless of sentence length. _(measured 2026-10-10; speech helper built as the new default, needs a real-Mac check)_
    - `sayRate` in the config is ignored by the helper (it only applies to the `say` fallback).
    - Each voice costs a one-time load the first time it is used (Samantha about 0.5–0.9 s, paid at startup; other voices 0.2–0.5 s on first use).
-   - `BRIEF.md` still lists macOS `say` as the text-to-speech stack; that file is Jacquez's to update.
+   - `BRIEF.md` was brought up to date on 2026-10-11 at Jacquez's request (speech helper, hybrid decision, Split-Core mark, roadmap).
    - Browser speech has no ground truth for when sound starts: Chrome's `start` event fires on request (4–30 ms), about 100 ms before the first word event. Q times from the first word event; a voice with no word events falls back to `start` + 500 ms, which over-reports.
    - The first browser-speech sentence after a page load was slower (0.41 s) than later ones.
    - Chrome is known to drop speech queued right after a cancel; not seen in testing, worth watching for after interrupts.
