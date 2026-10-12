@@ -56,6 +56,8 @@ Try it with VS Code and your browser open too, because that's how you'll actuall
 
 - **Personality:** edit `persona.md`. Q re-reads it every turn, so you don't need to restart.
 - **Voice:** pick one in the Voice panel. Q speaks through a small helper (`bin/q-speak`, built from `speech/q-speak.swift` by setup or `npm run build:speech`) that keeps the macOS voice loaded. Without it Q falls back to `say`, which adds over a second per sentence, and the System panel says so. The Voice engine menu can also switch to the browser's own speech, which only ever uses voices installed on this Mac. For better voices, go to System Settings → Accessibility → Spoken Content → System Voice → Manage Voices and download a Premium or Enhanced voice. It will show up in the list.
+- **Comparing Whisper models:** tick "Compare Whisper models on my voice" in the Voice panel and a second model (`small.en`, if it is in `models/`) hears each recording too. When the two disagree you see both and mark which was right; Q keeps the score, not the words. It uses about 600 MB more memory, so switch it off when benchmarking.
+- **Quality test:** `node scripts/quality-run.mjs --label NAME` runs the prompts in `quality/prompts.json` through Q and saves the replies to `quality/out/` (not checked in). Run it twice, or once plus `--template cloud` filled in by hand, then open `/quality.html` to compare the two blind.
 - **Staying responsive after a pause:** for 15 minutes after your last turn, while the Q page is open, Q pings the model, Whisper and the voice every 2 minutes so macOS doesn't compress their memory, and it wakes them the moment you press the talk key. Change `keepWarmSeconds` and `keepWarmMinutes` in `q.config.json`; set `keepWarmMinutes` to 0 to turn it off.
 - **Model and other settings:** copy `q.config.example.json` to `q.config.json` and edit it. For example, set `"model": "qwen2.5:3b"` after running `ollama pull qwen2.5:3b`. Restart Q after you change it.
 
@@ -87,6 +89,9 @@ speech/q-speak.swift  speech helper source (compiled to bin/q-speak, which is no
 Start Q.command    double-click launcher (checks Ollama, runs npm start, opens the page)
 scripts/setup.sh   one-time install/download
 scripts/bench-cache.mjs  prompt-cache benchmark (timings only)
+scripts/quality-run.mjs  runs the quality-test prompts through Q and saves the replies
+quality/prompts.json     the 20 quality-test prompts
+public/quality.html      blind side-by-side comparison of two quality runs
 ```
 
 There are no npm dependencies. You need Node 20+. The speech helper needs `swiftc`, which comes with Xcode or its command line tools.

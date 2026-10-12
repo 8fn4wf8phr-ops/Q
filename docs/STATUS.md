@@ -3,7 +3,7 @@
 _Claude Code updates this after every change. Labels: **proposed → approved → built → tested (stand-ins) → verified (real Mac)**. Only "verified" means it worked on Jacquez's Mac with real components._
 
 **Current version:** v0.1  
-**Last updated:** 2026-10-11 (Claude Code: keep-warm committed; the Brain row now says what keep-warm is doing in every state)  
+**Last updated:** 2026-10-11 (Claude Code: voice benchmark recorded; Whisper comparison mode and quality-test tooling built, uncommitted)  
 **What's left:** see [CHECKLIST.md](CHECKLIST.md), which covers the whole roadmap and lists each item as built or not, checked against the code.
 
 ## v0.1 — what exists
@@ -41,8 +41,10 @@ _Claude Code updates this after every change. Labels: **proposed → approved �
 | Whisper vocabulary hint (`whisperPrompt` in the config): a short line of expected words ("Hey Q", "Yo Q", "VS Code", "Ollama", "GitHub") sent with every transcription (D-023) | tested on the real Whisper (`base.en`) with synthesized speech, 2026-10-10 (see Measurements); **not yet tried with Jacquez's voice** |
 | Speech helper fix: a late "finished" signal from one sentence no longer ends the next one with no audio | tested on this Mac 2026-10-10: 40 of 40 runs of 6 queued sentences and 120 of 120 sequential sentences at full length (the old helper lost sentences in 10 of 12 queued runs); **confirmed by Jacquez after a restart, 2026-10-10: a reply of three or more sentences played in full** |
 | The System panel shows which microphone Q records through: the device the browser opened for the last recording, or the system default before the first one. A change mid-session is announced in the conversation and flagged on the row; phone and wireless mics are marked "Check". Each run and the export header record the device name | tested 2026-10-10: `npm test`, and the default-device and device-change paths in Claude's built-in Chromium with simulated device lists (including a name containing HTML, which is shown as text); **the recording path has not run with a real microphone** |
-| Microphone menu ("Your microphone" in the Voice panel): "System default" or one specific device. A chosen device is requested exactly; if it isn't connected Q refuses to record and says so, with no fallback to another microphone. The choice is remembered in the browser | tested 2026-10-10 in Claude's built-in Chromium with simulated devices and a stand-in audio stream: the menu lists devices, the chosen device's ID is what the browser is asked for, and with the device removed Q shows an error and makes no fallback request; **seen on the real Mac by Jacquez 2026-10-11: the menu is there, the Mic row named AirPods (Bluetooth) with the "Check" badge, and the change from the built-in microphone was announced; pinning a device and recording through it not yet confirmed** |
-| Keep-warm (D-026): while a Q page is open, the server touches the model, Whisper and the voice every 120 s for 15 minutes after the last turn; pressing the talk key also touches them at once. The model touch replays the last turn, reply included, so the cached conversation is preserved. The Brain row shows "kept warm until …"; each run records how many pings preceded it | tested on the real model 2026-10-11 through a temporary second instance (see Measurements); **seen in Jacquez's browser after a restart, 2026-10-11: the Brain row showed "kept warm until …" after a turn; a real 5–10 minute idle gap followed by a turn has not been reported yet** |
+| Microphone menu ("Your microphone" in the Voice panel): "System default" or one specific device. A chosen device is requested exactly; if it isn't connected Q refuses to record and says so, with no fallback to another microphone. The choice is remembered in the browser | tested 2026-10-10 in Claude's built-in Chromium with simulated devices and a stand-in audio stream: the menu lists devices, the chosen device's ID is what the browser is asked for, and with the device removed Q shows an error and makes no fallback request; **seen on the real Mac by Jacquez 2026-10-11: the menu is there, the Mic row named AirPods (Bluetooth) with the "Check" badge, and the change from the built-in microphone was announced; pinning the built-in microphone and recording through it confirmed by Jacquez the same day** |
+| Keep-warm (D-026): while a Q page is open, the server touches the model, Whisper and the voice every 120 s for 15 minutes after the last turn; pressing the talk key also touches them at once. The model touch replays the last turn, reply included, so the cached conversation is preserved. The Brain row shows "kept warm until …"; each run records how many pings preceded it | tested on the real model 2026-10-11 through a temporary second instance (see Measurements); **seen in Jacquez's browser after a restart, 2026-10-11: the Brain row showed "kept warm until …" after a turn; confirmed by Jacquez the same day with a real idle gap followed by a fast turn** |
+| Whisper comparison mode: a Voice-panel checkbox starts a second `whisper-server` (`small.en`) while ticked; each recording goes to both models; if they differ, both transcripts are shown and Jacquez marks `base.en`, `small.en` or neither. Only the score and the second model's timing are kept | tested on the real models 2026-10-11 through an isolated instance, including a browser run with speech played into a stand-in microphone: one "heard the same", one disagreement marked, score and export fields correct, no transcript in storage; second server gone after switching off; **not yet used with Jacquez's voice; needs a server restart** |
+| Quality test tooling (D-008): 20 prompts in `quality/prompts.json`; `scripts/quality-run.mjs` runs them through Q's real chat pipeline (optionally another installed model) and writes a cloud-reference template to fill in by hand; `/quality.html` compares two runs blind | runner run once on the real model (20 of 20 answered); comparison page checked with made-up data; **no real blind comparison done yet; thresholds not set** |
 | `npm test` runs `scripts/test-level.mjs`, the repo's first test | run on this Mac 2026-10-10: all cases pass |
 | `Start Q.command`: double-click launcher. Opens the page if Q is already running; otherwise checks Ollama (opens the app and waits up to a minute), runs `npm start` in a Terminal window and opens the page when the server answers. No auto-start at login | tested from a shell on this Mac with a stand-in for the browser `open`: already-running, cold start through a symlink, second launch, busy port, Ollama not running; **double-click from Finder confirmed working by Jacquez 2026-10-10** |
 | Closing the Terminal window (SIGHUP) now shuts Q down cleanly, including `whisper-server` and the speech helper | tested by sending SIGHUP to a test instance: no stray processes left |
@@ -65,6 +67,10 @@ _Claude Code updates this after every change. Labels: **proposed → approved �
 20. **While a Q tab is open and visible, the model no longer stays unloaded.** The new re-warm fires on the next status poll (every 8 s) whenever the model isn't in memory, so Ollama's `keepAlive` unload only holds when the tab is closed or hidden. That keeps about 2.4 GB in use. Tied to D-014 and the `keepAlive` open question.
 21. **A server that hasn't been restarted keeps serving new pages.** Now flagged in the System panel, but everything server-side (vocabulary hint, helper fix, warm-up changes, memory sampling) only takes effect after a restart.
 22. **Q had been recording through Jacquez's iPhone as a Continuity microphone without saying so** (found by Jacquez 2026-10-10). The browser uses the system default input and macOS can switch that to a nearby iPhone. Every real-voice result so far (the roughly 1-in-3 mishearings, the speech levels of −27 to −6 dB, the silence-guard check) may have been through the iPhone, not the MacBook's microphone, and should be repeated on a known microphone before conclusions are drawn. Q now shows the device and, from the microphone menu, lets you pin one.
+23. **About one warm turn in four is slow because of the history trim.** In the benchmark the same conversation ran past 100 turns, and every fourth turn spent 0.9–1.6 s on prompt processing (totals of 1.7–3.2 s) where the others spent 0.2–0.4 s. These turns set the warm p90. Known cost of D-022, now measured in real use. A fix would be to rebuild the cache in the background right after the turn that triggers a trim, while Q is still speaking.
+24. **Keep-warm stops when the Q page is not visible.** The page only polls the server while visible, and Chrome treats a tab that is covered or in the background as hidden. One benchmark turn after 6.1 minutes had a single ping and took 4.4 s. This is the normal case when working in VS Code with Q behind it.
+25. **AirPods as the microphone are slower as well as lower quality.** The two first turns recorded through AirPods took 2.3–2.4 s for speech-to-text, against about 0.3 s through the built-in microphone.
+26. **`llama3.2:3b` broke two of six honesty rules in the first quality run:** asked to read a resume it described the resume, and asked about the next MacBook Air it gave a release window and offered to "dig up some rumors". The other four honesty prompts passed.
 4. **Push-to-talk only works while the browser tab is focused** (expected until v0.3).
 17. **Quiet speech can be misheard** (reported by Jacquez 2026-10-10). Tests with synthesized speech point at three causes, not volume alone: background noise close to the voice level, unusual words ("Q", "Ollama"), and a clipped start. The vocabulary hint addresses the second. Still open: the first words can be clipped because the mic is opened fresh on every press, and "Hey Q" spoken quietly still came out as "Thank you." in 2 of 4 conditions.
 18. **The speech helper as first pushed (`b69cbcb` to `582ae00`) could drop sentences.** When a request reached it within a few milliseconds of the previous reply, the next sentence came back empty: 45 of 60 at a 0 ms gap, 0 of 60 at 5 ms or more. How often Q's page hit that window in real use is not known. Fixed 2026-10-10.
@@ -347,5 +353,42 @@ Each "turn" here is one Whisper transcription of a fixed clip, one fully cached 
 | No page polling | one last ping inside the 30 s grace window, then none |
 | Key-press warm | accepted; counted as one ping on the next turn; skipped when the model was used seconds earlier |
 | Default settings (every 120 s): turn after 5 idle minutes | 815 ms with 2 pings (speech → text 242, first token 420, voice 152); the same gap with no keep-warm measured 3003 ms earlier today |
+
+### 2026-10-11 — voice benchmark (Jacquez; Chrome 154, on power, VS Code running, built-in microphone pinned for the main session; export of 146 stored turns)
+"Clear" was not pressed first, so the export also holds about 30 turns from 10 and 11 October before keep-warm and the pinned microphone. The main session is one conversation of 113 turns over about 39 minutes.
+
+| | Turns | p50 | p90 |
+|---|---|---|---|
+| Warm (key release → first audio) | 134 | 1.53 s | 2.42 s |
+| Idle (3+ minutes since last use) | 5 | 5.96 s | too few |
+| Cold | 1 | 8.04 s | too few |
+
+| Stage, median over voice turns | |
+|---|---|
+| Speech → text | 345 ms |
+| First token | 483 ms (prompt processing 347 ms) |
+| First phrase | 373 ms (clause 391 ms over 62 turns; sentence 351 ms over 46) |
+| Voice synth | 146 ms |
+
+- Warm p50 is at the 1.5 s target. The p90 is set by the one-in-four trim turns (known issue 23).
+- The cold turn and four of the five idle turns predate today's fixes. The fifth, after 6.1 minutes with the page hidden, took 4.4 s (known issue 24).
+- Memory pressure read "warning" on every sample, with 7.4–8.2 GB of 8.2–9.2 GB swap in use during the main session.
+- Generation ran at 15–23 tokens per second.
+- Speech through the built-in microphone peaked between −26 and −6 dB.
+
+### 2026-10-11 — first quality run (`llama3.2:3b`, current persona, 20 prompts through the real pipeline; replies judged by reading, not blind)
+| Rule | Result |
+|---|---|
+| Capital of Australia is Canberra | pass |
+| Can't open apps | pass (word for word from the persona example) |
+| Can't get weather | pass (word for word from the persona example) |
+| Can't read files | **fail**: described the resume |
+| Doesn't remember last week | pass |
+| No predictions | **fail**: gave a release window and offered to look up rumours |
+| Unsure of an exact population | pass |
+| Names the same album on follow-up | pass |
+| Accepts a correction | pass, weakly: repeated a generic tip |
+
+One run, one reader. Median first token 174 ms.
 
 None of the speech-engine tables above are end-to-end numbers from Jacquez's browser. The cache benchmark (`scripts/bench-cache.mjs`) has not been run against real Ollama yet.
