@@ -3,7 +3,7 @@
 _Claude Code updates this after every change. Labels: **proposed → approved → built → tested (stand-ins) → verified (real Mac)**. Only "verified" means it worked on Jacquez's Mac with real components._
 
 **Current version:** v0.2 (v0.1 closed by Jacquez on 2026-10-11, D-028)  
-**Last updated:** 2026-10-11 (Claude Code: recorded the Whisper comparison on Jacquez's real voice)  
+**Last updated:** 2026-10-12 (Claude Code: mic-open time and early-speech flag built to measure clipped first words; uncommitted)  
 **What's left:** see [CHECKLIST.md](CHECKLIST.md), which covers the whole roadmap and lists each item as built or not, checked against the code.
 
 ## v0.1 — what exists
@@ -48,6 +48,7 @@ _Claude Code updates this after every change. Labels: **proposed → approved �
 | Quality test tooling (D-008): 20 prompts in `quality/prompts.json`; `scripts/quality-run.mjs` runs them through Q's real chat pipeline (optionally another installed model) and writes a cloud-reference template to fill in by hand; `/quality.html` compares two runs blind | runner run once on the real model (20 of 20 answered); comparison page checked with made-up data; **no real blind comparison done yet; thresholds not set** |
 | Trim priming: when the next turn will drop a block of history, the server rebuilds the model's cached conversation right after the current reply, while Q is still speaking | benchmarked on the real model 2026-10-11 (see Measurements); **not yet seen in a real voice session; needs a server restart** |
 | Hidden-page heartbeat: the page tells the server it is open every 30 s even when hidden, and the server counts a page as open for 150 s, so keep-warm continues with Q behind another window | tested on the real model 2026-10-11 with heartbeats only and with none (see Measurements); **not yet tested with a really hidden Chrome tab** |
+| Clipped-first-words measurement: each voice turn records how long the microphone took to open after the key went down, and whether sound was already present in the first 100 ms of the recording. Shown as "Mic opened in …" in the latency panel; both in the run data, with a summary in the export | tested 2026-10-12: `npm test`, and a browser run with a stand-in microphone (opened in 0.09, 0.28 and 0.68 s as set up; flagged only the case where speech was already playing); **no real microphone data yet** |
 | `npm test` runs `scripts/test-level.mjs`, the repo's first test | run on this Mac 2026-10-10: all cases pass |
 | `Start Q.command`: double-click launcher. Opens the page if Q is already running; otherwise checks Ollama (opens the app and waits up to a minute), runs `npm start` in a Terminal window and opens the page when the server answers. No auto-start at login | tested from a shell on this Mac with a stand-in for the browser `open`: already-running, cold start through a symlink, second launch, busy port, Ollama not running; **double-click from Finder confirmed working by Jacquez 2026-10-10** |
 | Closing the Terminal window (SIGHUP) now shuts Q down cleanly, including `whisper-server` and the speech helper | tested by sending SIGHUP to a test instance: no stray processes left |

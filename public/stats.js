@@ -16,7 +16,7 @@ export const IDLE_MS = 180_000;
 const NUMBERS = [
   'at', 'total', 'stt', 'firstToken', 'firstSentence', 'voiceSynth',
   'promptMs', 'promptTokens', 'loadMs', 'warmupWaitMs', 'evalTokens', 'tokPerSec',
-  'captureMs', 'levelDb', 'loudMs', 'turnIndex', 'idleMs', 'pings', 'sttAltMs',
+  'captureMs', 'levelDb', 'loudMs', 'turnIndex', 'idleMs', 'pings', 'sttAltMs', 'armMs',
 ];
 const ENUMS = {
   kind: ['warm', 'idle', 'cold'],
@@ -89,6 +89,19 @@ export function summarize(runs) {
       const of = voice.filter((r) => r.firstChunk === c);
       return [c, { n: of.length, medianMs: num(percentile(of.map((r) => r.firstSentence), 0.5)) }];
     })),
+    // How long the microphone takes to open after the key goes down, and how
+    // often speech had already started by then.
+    micOpen: (() => {
+      const timed = voice.filter((r) => typeof r.armMs === 'number');
+      const judged = voice.filter((r) => typeof r.startsLoud === 'boolean');
+      return {
+        n: timed.length,
+        medianMs: num(percentile(timed.map((r) => r.armMs), 0.5)),
+        p90Ms: timed.length >= MIN_FOR_P90 ? num(percentile(timed.map((r) => r.armMs), 0.9)) : null,
+        speechAlreadyStarted: judged.filter((r) => r.startsLoud).length,
+        of: judged.length,
+      };
+    })(),
     stageMedians: { stt: stage('stt'), firstToken: stage('firstToken'), firstSentence: stage('firstSentence'), voiceSynth: stage('voiceSynth'), promptMs: stage('promptMs') },
   };
 }
@@ -111,6 +124,8 @@ export function cleanRun(run) {
   for (const [k, allowed] of Object.entries(ENUMS)) out[k] = oneOf(run?.[k], allowed);
   out.cold = run?.cold === true;
   out.kind = kindOf(out);
+  // Speech was already under way when the microphone opened (null if not measured).
+  out.startsLoud = typeof run?.startsLoud === 'boolean' ? run.startsLoud : null;
   out.mic = typeof run?.mic === 'string' ? run.mic.slice(0, 80) : null;
   out.sys = cleanSys(run?.sys);
   return out;

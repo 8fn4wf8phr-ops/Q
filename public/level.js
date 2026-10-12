@@ -12,13 +12,18 @@ export const SPEECH = {
   thresholdDb: -50, // a frame counts as sound at or above this RMS level (dBFS)
   minLoudMs: 120, // this much sound in total counts as speech
   ignoreTailMs: 100, // the key-release click lands at the very end
+  startMs: 100, // the opening stretch checked for speech already under way…
+  startLoudMs: 60, // …which needs this much sound in it (a click is shorter)
 };
 
 const toDb = (x) => (x > 0 ? 20 * Math.log10(x) : -Infinity);
 
 // samples: mono Float32Array in [-1, 1]. Returns
-// { hasSpeech, loudMs, peakDb, floorDb } where peakDb and floorDb are the
-// 95th and 10th percentile frame levels.
+// { hasSpeech, loudMs, peakDb, floorDb, startsLoud } where peakDb and floorDb
+// are the 95th and 10th percentile frame levels. startsLoud means there was
+// already sound in the first moments of the recording: the speaker had
+// probably started before the microphone was open, so the opening words may
+// be missing.
 export function measureLevel(samples, rate, opts = SPEECH) {
   const size = Math.max(1, Math.round((rate * opts.frameMs) / 1000));
   const usable = Math.max(0, samples.length - Math.round((rate * opts.ignoreTailMs) / 1000));
@@ -28,9 +33,11 @@ export function measureLevel(samples, rate, opts = SPEECH) {
     for (let j = i; j < i + size; j++) sum += samples[j] * samples[j];
     frames.push(toDb(Math.sqrt(sum / size)));
   }
-  if (!frames.length) return { hasSpeech: false, loudMs: 0, peakDb: -Infinity, floorDb: -Infinity };
+  if (!frames.length) return { hasSpeech: false, loudMs: 0, peakDb: -Infinity, floorDb: -Infinity, startsLoud: false };
   const loudMs = frames.filter((f) => f >= opts.thresholdDb).length * opts.frameMs;
   const sorted = [...frames].sort((a, b) => a - b);
   const at = (q) => sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))];
-  return { hasSpeech: loudMs >= opts.minLoudMs, loudMs, peakDb: at(0.95), floorDb: at(0.1) };
+  const opening = frames.slice(0, Math.round(opts.startMs / opts.frameMs));
+  const startsLoud = opening.filter((f) => f >= opts.thresholdDb).length * opts.frameMs >= opts.startLoudMs;
+  return { hasSpeech: loudMs >= opts.minLoudMs, loudMs, peakDb: at(0.95), floorDb: at(0.1), startsLoud };
 }

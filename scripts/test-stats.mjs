@@ -83,6 +83,9 @@ check('an empty transcript differs from a real one', !sameWords('', 'Hello') && 
 const cm = buildExport([{ ...run(1), sttAltMs: 455.2, compare: 'alt' }, { ...run(2), compare: 'the other one' }], { compareModel: 'ggml-small.en.bin', compareTally: { same: 7, base: 1, alt: 3, neither: 1, text: SECRET } });
 check('each run keeps the verdict and the second model’s time', cm.runs[0].compare === 'alt' && cm.runs[0].sttAltMs === 455.2 && cm.runs[1].compare === null);
 check('the header carries the tally as counts only', same(cm.header.compareTally, { same: 7, base: 1, alt: 3, neither: 1 }) && !JSON.stringify(cm).includes(SECRET));
+const mo = buildExport([{ ...run(1), armMs: 120.4, startsLoud: false }, { ...run(2), armMs: 480, startsLoud: true }, { ...run(3), armMs: 'soon', startsLoud: 'yes' }, run(4)]);
+check('each run keeps the mic-open time and the early-speech flag', mo.runs[0].armMs === 120.4 && mo.runs[1].startsLoud === true && mo.runs[2].armMs === null && mo.runs[2].startsLoud === null);
+check('the summary reports mic-open time and how often speech had already started', mo.summary.micOpen.n === 2 && mo.summary.micOpen.medianMs === 120.4 && mo.summary.micOpen.speechAlreadyStarted === 1 && mo.summary.micOpen.of === 2, JSON.stringify(mo.summary.micOpen));
 check('garbage input does not throw', same(buildExport(null).runs, []) && cleanRun(undefined).total === null);
 
 console.log(failed ? `\n${failed} case(s) failed\n` : '\nAll cases passed\n');

@@ -578,6 +578,8 @@ function recordTurn(t) {
     idleMs: st.idleMs ?? t.idleMs,
     firstChunk: t.firstChunk ?? null,
     mic: t.mic ?? null,
+    armMs: t.armMs ?? null,
+    startsLoud: t.level ? t.level.startsLoud : null,
     pings: st.pingsSinceLastTurn ?? null,
     sttAltMs: t.sttAltMs ?? null,
     compare: t.compare ?? null,
@@ -629,8 +631,10 @@ async function pttDown() {
   unlockSpeech();
   els.mic.classList.add('held');
   setPhase('arming');
+  const pressed = performance.now();
   S.arming = recorder.start(S.micId || undefined)
     .then(() => {
+      S.armMs = performance.now() - pressed; // key down → actually recording
       const firstNames = !els.micSelect.options.length || els.micSelect.options.length === 1;
       setMic(recorder.deviceName, 'recording');
       if (firstNames) checkDefaultMic(); // device names are available from now on
@@ -660,6 +664,7 @@ async function pttUp() {
   const t = newTurn('voice', released);
   turn = t;
   t.mic = recorder.deviceName;
+  t.armMs = S.armMs ?? null;
   t.captureMs = result.durationMs;
   setPhase('transcribing');
   try {
@@ -741,7 +746,8 @@ function renderLatency() {
     + `<div class="lrow plain"><span></span><span>Generation speed</span><b>${st?.tokPerSec ? `${st.tokPerSec.toFixed(1)} tok/s` : '—'}</b></div>`
     + `<div class="lrow plain"><span></span><span>Model load this turn</span><b>${st ? loadLabel(st) : '—'}</b></div>`
     + (t.source === 'voice' ? `<div class="lrow plain"><span></span><span>You spoke for</span><b>${fmtS(t.captureMs)}</b></div>` : '')
-    + (t.level ? `<div class="lrow plain"><span></span><span>Input level</span><b>${fmtDb(t.level.peakDb)} · ${fmtS(t.level.loudMs)} of sound</b></div>` : '');
+    + (t.level ? `<div class="lrow plain"><span></span><span>Input level</span><b>${fmtDb(t.level.peakDb)} · ${fmtS(t.level.loudMs)} of sound</b></div>` : '')
+    + (t.armMs != null ? `<div class="lrow plain"><span></span><span>Mic opened in</span><b>${fmtS(t.armMs)}${t.level?.startsLoud ? ' · you were already speaking' : ''}</b></div>` : '');
 }
 
 function renderHistory() {

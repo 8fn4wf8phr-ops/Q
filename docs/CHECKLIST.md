@@ -110,7 +110,8 @@ Nothing here is finished. Some of it was started early while fixing v0.1.
 - [x] Keep-warm confirmed in real use by Jacquez, 2026-10-11: a turn after an idle gap with the tab open was fast.
 - [x] Speed: Q can start speaking at the first clause instead of the first full sentence (`public/chunk.js`, D-025); about 0.5 s sooner on roughly half of replies in a 30-prompt test.
 - [x] First-clause speech heard by Jacquez, 2026-10-10: keep it on.
-- [ ] Speed: the first words can be clipped because the mic opens fresh on every press.
+- [x] Clipped first words, step 1 (2026-10-12): Q now measures how long the mic takes to open and flags recordings where speech had already started.
+- [ ] Clipped first words, step 2: after a real session, decide from the numbers whether to hold the mic open briefly between turns.
 - [ ] Continuity within a conversation is limited to the last 4–8 turns (`trimHistory()`); nothing carries across sessions.
 - [x] Blind pairwise quality evaluation (D-008): tooling built and first comparisons done, 2026-10-11 (two local models, a cloud reference, and old against new persona).
 - [x] Compare local models (D-009), first valid pass: blind comparison by Jacquez on the fixed page, 2026-10-11. Preference a draw (`qwen2.5:3b` 6, `llama3.2:3b` 5, same 9); `llama3.2:3b` met more rules (5 of 9 against 3) and won on personality. No case for switching. (An earlier attempt the same day is withdrawn: the page was showing only one reply.)

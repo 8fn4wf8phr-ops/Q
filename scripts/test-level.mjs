@@ -97,5 +97,17 @@ if (!helperBuilt) {
   proc.stdin.end();
 }
 
+console.log('\nSpeech already under way when the recording starts');
+function checkStart(name, samples, expected, rate = RATE) {
+  const ok = measureLevel(samples, rate).startsLoud === expected;
+  if (!ok) failed++;
+  console.log(`  ${ok ? '✓' : '✕'} ${name}: ${measureLevel(samples, rate).startsLoud ? 'flagged' : 'not flagged'}`);
+}
+checkStart('sound from the very first sample', mix(noise(1.5, -70), noise(0.6, -25), 0), true);
+checkStart('speech that starts after 0.3 s of quiet', mix(noise(1.5, -70), noise(0.6, -25), 0.3), false);
+checkStart('a 40 ms click at the very start, then speech later', mix(mix(noise(1.5, -70), noise(0.04, -15), 0), noise(0.6, -25), 0.4), false);
+checkStart('silence', noise(1.5, -70), false);
+checkStart('an empty recording', new Float32Array(0), false);
+
 console.log(failed ? `\n${failed} case(s) failed\n` : '\nAll cases passed\n');
 process.exit(failed ? 1 : 0);
