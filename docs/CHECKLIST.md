@@ -93,14 +93,15 @@ Covers the whole roadmap in `BRIEF.md`, v0.1 through v1.1+. v0.1 is itemised bec
 
 Nothing here is finished. Some of it was started early while fixing v0.1.
 
-- [ ] **Top item: Whisper accuracy.** `base.en` misheard about 1 turn in 3 at normal volume on Jacquez's real voice. Test `small.en` and the vocabulary hint on his real voice, and check whether clipped beginnings are part of it.
+- [x] **Top item: Whisper accuracy.** Settled 2026-10-11: with the built-in microphone pinned and the vocabulary hint on, `base.en` differed from `small.en` on 3 of 43 turns, and Jacquez chose to stay on `base.en` (D-029). Original note: `base.en` misheard about 1 turn in 3 at normal volume on Jacquez's real voice. Test `small.en` and the vocabulary hint on his real voice, and check whether clipped beginnings are part of it.
   - [x] `small.en` downloaded, verified and compared on synthesized speech (2026-10-10): 68% exact with the hint against 58% for `base.en` with the hint, for about 0.29 s and 350 MB more. His real failures were not reproduced.
   - [x] Q shows which microphone it is recording through and records it in the export. Found 2026-10-10: it had been using his iPhone as a Continuity microphone.
   - [x] Microphone menu in the Voice panel, so Q can be pinned to one device (2026-10-10; tested with simulated devices only).
   - [x] MacBook's own microphone pinned in the menu and shown "In use" after a recording (Jacquez, 2026-10-11).
-  - [ ] Repeat the real-voice check on a known microphone (the MacBook's own) before judging Whisper: the 1-in-3 mishearing figure may be the iPhone's doing.
+  - [x] Real-voice check repeated (2026-10-11, 43 turns): `base.en` differed from `small.en` on only 3. The earlier 1-in-3 figure was mostly the phone or AirPods microphone and the missing hint.
   - [x] Side-by-side comparison mode built (2026-10-11): both models hear each recording and he marks which was right.
-  - [ ] Compare the two models on his real voice: tick "Compare Whisper models on my voice" and do 20–30 turns.
+  - [x] Compared on his real voice, 2026-10-11, 43 turns: same 40, `small.en` right 3, `base.en` right 0, neither 0.
+  - [x] Decided 2026-10-11 (D-029): stay on `base.en`.
 
 - [x] Persona written as example replies, not percentages (`persona.md`, D-012).
 - [ ] Persona followed reliably. One typed run showed long first sentences, example lines copied word for word, and one invented claim.
