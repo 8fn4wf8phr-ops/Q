@@ -2,8 +2,8 @@
 
 _Claude Code updates this after every change. Labels: **proposed → approved → built → tested (stand-ins) → verified (real Mac)**. Only "verified" means it worked on Jacquez's Mac with real components._
 
-**Current version:** v0.1  
-**Last updated:** 2026-10-11 (Claude Code: persona now has four honesty examples and a closing reminder, both approved by Jacquez)  
+**Current version:** v0.2 (v0.1 closed by Jacquez on 2026-10-11, D-028)  
+**Last updated:** 2026-10-11 (Claude Code: v0.1 closed on Jacquez's decision; new persona judged blind; all three D-027 conditions met)  
 **What's left:** see [CHECKLIST.md](CHECKLIST.md), which covers the whole roadmap and lists each item as built or not, checked against the code.
 
 ## v0.1 — what exists
@@ -24,7 +24,7 @@ _Claude Code updates this after every change. Labels: **proposed → approved �
 | "Copy run data" and "Clear" buttons; the export is built from an allowlist of numeric fields (D-007) | tested: `npm test` plants message text and checks none comes out; export checked in Claude's built-in Chromium through the fallback text box; **the clipboard path itself has not run (that browser blocks it); try it in Chrome** |
 | System panel: model, speech and voice status; Ollama model memory; server process memory | tested (stand-ins) |
 | `persona.md` re-read every turn; last 8 turns of context | tested (stand-ins) |
-| Persona additions on 2026-10-11 after the quality test: four honesty examples (files, past sessions, predictions, exact figures) and a closing reminder paragraph. Drafted by Claude Code, approved by Jacquez | sampled on the real model: honesty passes 17 → 27 of 30 as read by Claude Code; **not yet judged blind or heard in a voice turn** |
+| Persona additions on 2026-10-11 after the quality test: four honesty examples (files, past sessions, predictions, exact figures) and a closing reminder paragraph. Drafted by Claude Code, approved by Jacquez | sampled on the real model: honesty passes 17 → 27 of 30 as read by Claude Code; **judged blind by Jacquez 2026-10-11: 9 of 9 rules met, 6 of 6 honesty rules; not yet reported from a voice turn** |
 | Example-driven persona written by Jacquez (short first sentence, no assistant-speak, wider "can't do yet" list, twelve example exchanges), applied unchanged in `21c0809` | one ten-turn typed run on the real model 2026-10-10 (see Measurements); **confirmed working by Jacquez 2026-10-10**; no blind quality test |
 | `npm run setup` (whisper-cpp, base.en model, llama3.2:3b) | run by Jacquez (Ollama 0.40.2 and whisper.cpp present 2026-10-10) |
 | Whole pipeline on the real Mac | first runs 2026-10-10; test conditions (browser, VS Code load, power) not recorded |
@@ -75,7 +75,7 @@ _Claude Code updates this after every change. Labels: **proposed → approved �
 25. **AirPods as the microphone are slower as well as lower quality.** The two first turns recorded through AirPods took 2.3–2.4 s for speech-to-text, against about 0.3 s through the built-in microphone.
 28. **(Fixed 2026-10-11.)** The blind-comparison page showed only one of the two replies. Its reply cards used the class name `side`, which Q's main stylesheet assigns to a single grid area, so both cards landed in the same place and one covered the other. Present since the page was first added (`dd30c9b`); my checks at the time read the page's text and never looked at the layout. Reported by Jacquez; the first comparison was done in this state and is withdrawn. Cards renamed and confirmed side by side in a browser with the real result files.
 27. **(Fixed 2026-10-11.)** The blind-comparison page recorded an unticked rule box as a failure, so a session where the boxes were skipped looked like every reply broke its rule. Found in the first real comparison; the rule counts from that session are unusable. Each side now has explicit "Meets it" and "Doesn't" buttons, and a vote isn't accepted until both are answered (checked in a browser with made-up data).
-29. **Both local models fail most honesty prompts when judged blind** (Jacquez, 2026-10-11): 2 of 6 for `llama3.2:3b`, 1 of 6 for `qwen2.5:3b`. The four they both fail are pretending to read a file, inventing a past conversation, predicting a release, and stating an exact figure. The persona forbids all four; the models do it anyway. This is the main quality gap against the brief's "never fakes" requirement.
+29. **(Addressed 2026-10-11 by the persona's closing reminder: 6 of 6 when re-judged blind.)** **Both local models fail most honesty prompts when judged blind** (Jacquez, 2026-10-11): 2 of 6 for `llama3.2:3b`, 1 of 6 for `qwen2.5:3b`. The four they both fail are pretending to read a file, inventing a past conversation, predicting a release, and stating an exact figure. The persona forbids all four; the models do it anyway. This is the main quality gap against the brief's "never fakes" requirement.
 26. **Honesty varies a lot from run to run.** A second run of the same prompts broke four of the six rules (it also invented a decision from "last week" and quoted a census figure), and `qwen2.5:3b` broke four as well, including saying "Sure thing" to opening an app. Read by Claude Code, not blind. **`llama3.2:3b` broke two of six honesty rules in the first quality run:** asked to read a resume it described the resume, and asked about the next MacBook Air it gave a release window and offered to "dig up some rumors". The other four honesty prompts passed.
 4. **Push-to-talk only works while the browser tab is focused** (expected until v0.3).
 17. **Quiet speech can be misheard** (reported by Jacquez 2026-10-10). Tests with synthesized speech point at three causes, not volume alone: background noise close to the voice level, unusual words ("Q", "Ollama"), and a clipped start. The vocabulary hint addresses the second. Still open: the first words can be clipped because the mic is opened fresh on every press, and "Hey Q" spoken quietly still came out as "Thank you." in 2 of 4 conditions.
@@ -112,11 +112,14 @@ _Claude Code updates this after every change. Labels: **proposed → approved �
 - The repo contains no tests, so there is no evidence here for the "tested (stand-ins)" labels above.
 
 ## Next steps
-1. Jacquez: review `scripts/setup.sh`, install Ollama, run `npm run setup` and `npm start`.
-2. Jacquez: run `node scripts/bench-cache.mjs` and `node scripts/bench-cache.mjs --gap 61` on the baseline; paste both tables below (this is the test D-006 is waiting on).
-3. Claude Code: timestamp fix (proposed, waiting on the baseline numbers), then silence guard and run-data export, each after Jacquez approves.
-4. Benchmark: about 30 turns over two sessions with VS Code open. Record the browser, VS Code's workload, and whether the Mac is plugged in.
-5. Quality: set up a 20-prompt blind pairwise test (include multi-turn prompts and "can't do that" honesty checks, plus a cloud reference on non-personal prompts).
+v0.1 is closed (D-028); everything that was listed here is done. For v0.2, in order:
+1. Jacquez: restart Q, then a normal session past 8 turns with Q left behind VS Code for a few minutes, to confirm trim priming and the hidden-page heartbeat, and to hear the new persona.
+2. Jacquez: Whisper on his real voice (the top v0.2 item): tick "Compare Whisper models on my voice" for 20–30 turns on the built-in microphone and paste the score.
+3. Claude Code, on approval: clipped first words (the microphone opens fresh on every press).
+4. Evaluate Enhanced or Premium macOS voices (D-013).
+5. Before v0.3: choose the native wrapper (D-010).
+
+The full list is in [CHECKLIST.md](CHECKLIST.md).
 
 ## Measurements
 ### 2026-10-10 — first real-Mac runs (reported by Jacquez; conditions not recorded)
@@ -493,5 +496,23 @@ The rule as written is not satisfied, because of honesty alone. On preference a 
 - Release predictions remain the weakest: the model still offers "usually in the fall" in about two tries in five.
 - Full 20-prompt runs for blind judging: `quality/out/llama3.2-new-persona.json` (examples only) and `quality/out/llama3.2-reminder.json` (examples plus reminder, the persona now in use). In the reminder run the model refused to read the file, said it had no memory of last week and declined to date the MacBook Air; on the population it said its figures were from 2020 and outdated. It also said Canberra is in the middle of Australia, which is wrong.
 - Not yet judged blind by Jacquez, and not yet heard in a voice turn.
+
+### 2026-10-11 — blind comparison of the two new personas (Jacquez, fixed page, 20 prompts, `llama3.2:3b` both sides)
+| | Examples plus closing reminder (now in use) | Examples only | About the same |
+|---|---|---|---|
+| Preferred | 4 | 4 | 12 |
+| Rules met, of 9 | 9 | 7 | |
+| Honesty rules met, of 6 | 6 | 4 | |
+
+The examples-only run failed "read my resume" and "last week"; the run with the closing reminder failed none. Preference was level, so the reminder cost nothing in how the answers read.
+
+**D-027 re-scored:**
+| Condition | Result | Verdict |
+|---|---|---|
+| Preferred or tied in at least 40% of comparisons with the cloud reference | 11 of 14 (79%), measured with the earlier persona | met |
+| At least 5 of 6 honesty rules | 6 of 6, judged blind by Jacquez with the current persona | **met** (was 2 of 6) |
+| Warm p90 under 2.5 s | 2.42 s in the 2026-10-11 benchmark | met |
+
+All three conditions are met, so by the rule as written Q stays local. Limits: each honesty count is one run of 20 prompts and the model varies between runs (sampling put the current persona at 27 of 30); the preference figure was measured before the persona change; and the cloud reference was written by the assistant that designed the test.
 
 None of the speech-engine tables above are end-to-end numbers from Jacquez's browser. The cache benchmark (`scripts/bench-cache.mjs`) has not been run against real Ollama yet.

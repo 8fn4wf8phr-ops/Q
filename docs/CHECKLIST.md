@@ -4,7 +4,7 @@ _Checked against the code on 2026-10-10 (after the silence guard, the Whisper vo
 
 Covers the whole roadmap in `BRIEF.md`, v0.1 through v1.1+. v0.1 is itemised because it is the version in progress; later versions list what the code already has and what it doesn't.
 
-# v0.1 — validate on the real Mac
+# v0.1 — validate on the real Mac — CLOSED 2026-10-11 (D-028)
 
 **Goal (BRIEF.md):** latency (p50/p90, cold vs warm), memory pressure, swap, export, first quality test.
 
@@ -87,7 +87,7 @@ Covers the whole roadmap in `BRIEF.md`, v0.1 through v1.1+. v0.1 is itemised bec
 - [x] D-027 scored: preference met (79% preferred or tied), warm p90 met (2.42 s), **honesty not met (2 of 6)**.
 - [x] First change for honesty: four example exchanges added to the persona (2026-10-11). Sampled: 17 → 20 of 30 honesty passes; "read my resume" still fails every time.
 - [x] Closing reminder added to the persona on Jacquez's approval (2026-10-11): 27 of 30 honesty passes in sampling.
-- [ ] Jacquez: judge the new persona blind (`llama3.2.json` against `llama3.2-reminder.json`) and re-score D-027's honesty condition.
+- [x] New persona judged blind by Jacquez, 2026-10-11: 9 of 9 rules, 6 of 6 honesty rules. D-027 re-scored: all three conditions met, Q stays local.
 
 # v0.2 — tune personality, continuity and speed; blind quality evaluation; better macOS voice
 
@@ -111,12 +111,12 @@ Nothing here is finished. Some of it was started early while fixing v0.1.
 - [x] First-clause speech heard by Jacquez, 2026-10-10: keep it on.
 - [ ] Speed: the first words can be clipped because the mic opens fresh on every press.
 - [ ] Continuity within a conversation is limited to the last 4–8 turns (`trimHistory()`); nothing carries across sessions.
-- [ ] Blind pairwise quality evaluation (D-008). Not started; no prompts, no harness.
+- [x] Blind pairwise quality evaluation (D-008): tooling built and first comparisons done, 2026-10-11 (two local models, a cloud reference, and old against new persona).
 - [x] Compare local models (D-009), first valid pass: blind comparison by Jacquez on the fixed page, 2026-10-11. Preference a draw (`qwen2.5:3b` 6, `llama3.2:3b` 5, same 9); `llama3.2:3b` met more rules (5 of 9 against 3) and won on personality. No case for switching. (An earlier attempt the same day is withdrawn: the page was showing only one reply.)
-- [ ] Honesty: both models met only 1–2 of 6 honesty rules. Needs work before the quality gate can pass.
+- [x] Honesty: both models met only 1–2 of 6 honesty rules with the earlier persona. Fixed for `llama3.2:3b` by the persona's examples and closing reminder (6 of 6 blind, 27 of 30 in sampling).
 - [x] Comparison page fixed so a rule has to be judged explicitly, and so both replies are actually visible (2026-10-11).
 - [x] Rule checks redone with the fixed page (2026-10-11).
-- [ ] Local-vs-hybrid thresholds written down before the quality test. Still an open question in `DECISIONS.md`.
+- [x] Local-vs-hybrid thresholds written down (D-027) and met on 2026-10-11.
 - [x] Better voice, first step: Samantha is the default (D-018).
 - [ ] Better voice, second step: evaluate Enhanced or Premium voices (D-013). None are installed on this Mac; the helper already labels them when they are.
 
