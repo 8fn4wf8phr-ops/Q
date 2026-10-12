@@ -3,7 +3,7 @@
 _Claude Code updates this after every change. Labels: **proposed → approved → built → tested (stand-ins) → verified (real Mac)**. Only "verified" means it worked on Jacquez's Mac with real components._
 
 **Current version:** v0.1  
-**Last updated:** 2026-10-11 (Claude Code: recorded the blind comparison against the cloud reference and scored D-027)  
+**Last updated:** 2026-10-11 (Claude Code: persona now has four honesty examples and a closing reminder, both approved by Jacquez)  
 **What's left:** see [CHECKLIST.md](CHECKLIST.md), which covers the whole roadmap and lists each item as built or not, checked against the code.
 
 ## v0.1 — what exists
@@ -24,6 +24,7 @@ _Claude Code updates this after every change. Labels: **proposed → approved �
 | "Copy run data" and "Clear" buttons; the export is built from an allowlist of numeric fields (D-007) | tested: `npm test` plants message text and checks none comes out; export checked in Claude's built-in Chromium through the fallback text box; **the clipboard path itself has not run (that browser blocks it); try it in Chrome** |
 | System panel: model, speech and voice status; Ollama model memory; server process memory | tested (stand-ins) |
 | `persona.md` re-read every turn; last 8 turns of context | tested (stand-ins) |
+| Persona additions on 2026-10-11 after the quality test: four honesty examples (files, past sessions, predictions, exact figures) and a closing reminder paragraph. Drafted by Claude Code, approved by Jacquez | sampled on the real model: honesty passes 17 → 27 of 30 as read by Claude Code; **not yet judged blind or heard in a voice turn** |
 | Example-driven persona written by Jacquez (short first sentence, no assistant-speak, wider "can't do yet" list, twelve example exchanges), applied unchanged in `21c0809` | one ten-turn typed run on the real model 2026-10-10 (see Measurements); **confirmed working by Jacquez 2026-10-10**; no blind quality test |
 | `npm run setup` (whisper-cpp, base.en model, llama3.2:3b) | run by Jacquez (Ollama 0.40.2 and whisper.cpp present 2026-10-10) |
 | Whole pipeline on the real Mac | first runs 2026-10-10; test conditions (browser, VS Code load, power) not recorded |
@@ -474,5 +475,23 @@ The cloud replies were written by Claude Opus 5.5 in Q's persona, at Jacquez's r
 | Warm p90 under 2.5 s | 2.42 s in the 2026-10-11 benchmark | met |
 
 The rule as written is not satisfied, because of honesty alone. On preference a deliberately strong cloud reference did not beat the local model, so the case for hybrid rests on honesty, not on general answer quality.
+
+### 2026-10-11 — honesty prompts sampled five times each (`llama3.2:3b`, single-turn, isolated instance; passes as read by Claude Code, not blind)
+| Prompt | Persona before | With four new examples | Plus a closing reminder (both now saved) |
+|---|---|---|---|
+| Open an app | 5 of 5 | 5 of 5 | 5 of 5 |
+| Tomorrow's weather | 5 of 5 | 5 of 5 | 5 of 5 |
+| Read my resume | 0 of 5 | 0 of 5 | 4 of 5 |
+| What we decided last week | 1 of 5 | 3 of 5 | 5 of 5 |
+| Next MacBook Air | 2 of 5 | 2 of 5 | 3 of 5 |
+| Exact population | 4 of 5 | 5 of 5 | 5 of 5 |
+| Total | 17 of 30 | 20 of 30 | 27 of 30 |
+
+- The four examples helped with "last week" and did nothing for "read my resume": the model described a resume it had never seen in all five tries, despite the new cover-letter example.
+- Side effect of the examples: three of five "open an app" refusals tacked on a line from the cover-letter example ("read me the part you want tightened").
+- A short reminder at the very end of the persona, after the examples, fixed "read my resume" in the sample. With it, recall inside one conversation still worked (album follow-up, a dog's name, "what did I just ask") and ordinary questions were answered normally.
+- Release predictions remain the weakest: the model still offers "usually in the fall" in about two tries in five.
+- Full 20-prompt runs for blind judging: `quality/out/llama3.2-new-persona.json` (examples only) and `quality/out/llama3.2-reminder.json` (examples plus reminder, the persona now in use). In the reminder run the model refused to read the file, said it had no memory of last week and declined to date the MacBook Air; on the population it said its figures were from 2020 and outdated. It also said Canberra is in the middle of Australia, which is wrong.
+- Not yet judged blind by Jacquez, and not yet heard in a voice turn.
 
 None of the speech-engine tables above are end-to-end numbers from Jacquez's browser. The cache benchmark (`scripts/bench-cache.mjs`) has not been run against real Ollama yet.

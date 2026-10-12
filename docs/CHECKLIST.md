@@ -85,7 +85,9 @@ Covers the whole roadmap in `BRIEF.md`, v0.1 through v1.1+. v0.1 is itemised bec
 - [x] Jacquez: blind comparison of the two local models redone on the fixed page (see v0.2).
 - [x] Cloud reference filled in (by Claude, at Jacquez's request) and compared blind against `llama3.2.json`, 2026-10-11: preferred 3 each, same 8.
 - [x] D-027 scored: preference met (79% preferred or tied), warm p90 met (2.42 s), **honesty not met (2 of 6)**.
-- [ ] Decide what to do about the failed honesty condition, and re-test after any change.
+- [x] First change for honesty: four example exchanges added to the persona (2026-10-11). Sampled: 17 → 20 of 30 honesty passes; "read my resume" still fails every time.
+- [x] Closing reminder added to the persona on Jacquez's approval (2026-10-11): 27 of 30 honesty passes in sampling.
+- [ ] Jacquez: judge the new persona blind (`llama3.2.json` against `llama3.2-reminder.json`) and re-score D-027's honesty condition.
 
 # v0.2 — tune personality, continuity and speed; blind quality evaluation; better macOS voice
 
