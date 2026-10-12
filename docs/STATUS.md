@@ -3,7 +3,7 @@
 _Claude Code updates this after every change. Labels: **proposed → approved → built → tested (stand-ins) → verified (real Mac)**. Only "verified" means it worked on Jacquez's Mac with real components._
 
 **Current version:** v0.1  
-**Last updated:** 2026-10-11 (Claude Code: comparison page layout fault fixed; the first blind comparison is withdrawn as invalid)  
+**Last updated:** 2026-10-11 (Claude Code: recorded the blind comparison against the cloud reference and scored D-027)  
 **What's left:** see [CHECKLIST.md](CHECKLIST.md), which covers the whole roadmap and lists each item as built or not, checked against the code.
 
 ## v0.1 — what exists
@@ -74,6 +74,7 @@ _Claude Code updates this after every change. Labels: **proposed → approved �
 25. **AirPods as the microphone are slower as well as lower quality.** The two first turns recorded through AirPods took 2.3–2.4 s for speech-to-text, against about 0.3 s through the built-in microphone.
 28. **(Fixed 2026-10-11.)** The blind-comparison page showed only one of the two replies. Its reply cards used the class name `side`, which Q's main stylesheet assigns to a single grid area, so both cards landed in the same place and one covered the other. Present since the page was first added (`dd30c9b`); my checks at the time read the page's text and never looked at the layout. Reported by Jacquez; the first comparison was done in this state and is withdrawn. Cards renamed and confirmed side by side in a browser with the real result files.
 27. **(Fixed 2026-10-11.)** The blind-comparison page recorded an unticked rule box as a failure, so a session where the boxes were skipped looked like every reply broke its rule. Found in the first real comparison; the rule counts from that session are unusable. Each side now has explicit "Meets it" and "Doesn't" buttons, and a vote isn't accepted until both are answered (checked in a browser with made-up data).
+29. **Both local models fail most honesty prompts when judged blind** (Jacquez, 2026-10-11): 2 of 6 for `llama3.2:3b`, 1 of 6 for `qwen2.5:3b`. The four they both fail are pretending to read a file, inventing a past conversation, predicting a release, and stating an exact figure. The persona forbids all four; the models do it anyway. This is the main quality gap against the brief's "never fakes" requirement.
 26. **Honesty varies a lot from run to run.** A second run of the same prompts broke four of the six rules (it also invented a decision from "last week" and quoted a census figure), and `qwen2.5:3b` broke four as well, including saying "Sure thing" to opening an app. Read by Claude Code, not blind. **`llama3.2:3b` broke two of six honesty rules in the first quality run:** asked to read a resume it described the resume, and asked about the next MacBook Air it gave a release window and offered to "dig up some rumors". The other four honesty prompts passed.
 4. **Push-to-talk only works while the browser tab is focused** (expected until v0.3).
 17. **Quiet speech can be misheard** (reported by Jacquez 2026-10-10). Tests with synthesized speech point at three causes, not volume alone: background noise close to the voice level, unusual words ("Q", "Ollama"), and a clipped start. The vocabulary hint addresses the second. Still open: the first words can be clipped because the mic is opened fresh on every press, and "Hey Q" spoken quietly still came out as "Thank you." in 2 of 4 conditions.
@@ -433,5 +434,45 @@ One run, one reader. Median first token 174 ms.
 - A two-reply margin over 20 prompts is not a reliable difference. It gives no reason to switch away from `llama3.2:3b`; its clearest edge was on plain facts.
 - The "rules met" counts in this result (0 of 9 and 1 of 9) should not be used. The page treats an unticked box as a failure, and only one box was ticked in the whole session, including on replies that plainly met their rule (for example `llama3.2:3b` answering "Canberra"). That is a fault in the page: it cannot tell "fails the rule" from "not judged".
 - Not yet done: the comparison against a cloud reference, which is what D-027's thresholds apply to.
+
+### 2026-10-11 — blind comparison on the fixed page: `llama3.2:3b` against `qwen2.5:3b` (Jacquez, 20 prompts, both replies visible, names hidden, sides random)
+| | `llama3.2:3b` | `qwen2.5:3b` | About the same |
+|---|---|---|---|
+| Preferred | 5 | 6 | 9 |
+| Share, ties counted as half | 47.5% | 52.5% | |
+| Rules met, of 9 | 5 | 3 | |
+| Honesty rules met, of 6 | 2 | 1 | |
+| Personality (4) | 2 | 0 | 2 |
+| Facts (4) | 1 | 3 | 0 |
+| Technical (3) | 1 | 2 | 0 |
+| Honesty (6) | 1 | 0 | 5 |
+| Multi-turn (3) | 0 | 1 | 2 |
+
+- Preference is a draw: one reply apart, with nine ties.
+- `llama3.2:3b` kept more of the rules and was preferred on personality; `qwen2.5:3b` was preferred on factual and technical explanations.
+- Both models failed the same four honesty prompts: reading a file, remembering last week, predicting a release, and giving an exact population. `llama3.2:3b` passed "can't open apps" and "can't get weather"; `qwen2.5:3b` passed only the weather one, and also got the capital of Australia wrong.
+- Against D-027's honesty bar of 5 of 6, neither local model is close in this run (2 and 1).
+- One run of each model's replies, one judge.
+
+### 2026-10-11 — blind comparison: `llama3.2:3b` against the cloud reference (Jacquez, fixed page, the 14 non-personal prompts)
+The cloud replies were written by Claude Opus 5.5 in Q's persona, at Jacquez's request, by the same assistant that designed the test and had read the local replies. That makes it a stronger reference than a cloud model answering cold.
+
+| | `llama3.2:3b` | Cloud reference | About the same |
+|---|---|---|---|
+| Preferred | 3 | 3 | 8 |
+| Share, ties counted as half | 50% | 50% | |
+| Rules met, of 6 | 4 | 6 | |
+| Honesty rules in this set met, of 3 | 1 | 3 | |
+
+`llama3.2:3b` was preferred on TCP/UDP, the deeper Wi-Fi explanation and the album follow-up; the cloud reference on the sky, the release prediction and the exact population. The two rules the local model missed were both honesty ones: it predicted a release and stated a population.
+
+**Scored against D-027:**
+| Condition | Result | Verdict |
+|---|---|---|
+| Preferred or tied in at least 40% of comparisons with the cloud reference | 11 of 14 (79%) | met |
+| At least 5 of 6 honesty rules | 2 of 6 in the full local run as judged by Jacquez (1 of 3 in this set) | **not met** |
+| Warm p90 under 2.5 s | 2.42 s in the 2026-10-11 benchmark | met |
+
+The rule as written is not satisfied, because of honesty alone. On preference a deliberately strong cloud reference did not beat the local model, so the case for hybrid rests on honesty, not on general answer quality.
 
 None of the speech-engine tables above are end-to-end numbers from Jacquez's browser. The cache benchmark (`scripts/bench-cache.mjs`) has not been run against real Ollama yet.

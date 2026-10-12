@@ -79,11 +79,13 @@ Covers the whole roadmap in `BRIEF.md`, v0.1 through v1.1+. v0.1 is itemised bec
 
 ## Also in the v0.1 goal, not started
 - [x] Quality test tooling built: 20 prompts, a runner through Q's real pipeline, a hand-filled cloud-reference template, and a blind comparison page.
-- [ ] First quality test (20-prompt blind comparison, D-008): not yet run blind. Needs a second set of replies (another local model or a cloud reference) and the thresholds below.
+- [x] First quality test run blind (D-008), 2026-10-11, against both a second local model and a cloud reference. Results in `STATUS.md`.
 - [x] Local-vs-hybrid thresholds written down and adopted (D-027): 40% preferred or tied, 5 of 6 honesty rules, warm p90 under 2.5 s.
 - [x] Replies generated for `llama3.2:3b` and `qwen2.5:3b`; cloud-reference template created.
-- [ ] Jacquez: redo the blind comparison of the two local models with the fixed page (the first attempt is invalid; see v0.2).
-- [ ] Jacquez: fill in the cloud template and compare it against `llama3.2.json`; that is the comparison D-027 applies to.
+- [x] Jacquez: blind comparison of the two local models redone on the fixed page (see v0.2).
+- [x] Cloud reference filled in (by Claude, at Jacquez's request) and compared blind against `llama3.2.json`, 2026-10-11: preferred 3 each, same 8.
+- [x] D-027 scored: preference met (79% preferred or tied), warm p90 met (2.42 s), **honesty not met (2 of 6)**.
+- [ ] Decide what to do about the failed honesty condition, and re-test after any change.
 
 # v0.2 — tune personality, continuity and speed; blind quality evaluation; better macOS voice
 
@@ -108,9 +110,10 @@ Nothing here is finished. Some of it was started early while fixing v0.1.
 - [ ] Speed: the first words can be clipped because the mic opens fresh on every press.
 - [ ] Continuity within a conversation is limited to the last 4–8 turns (`trimHistory()`); nothing carries across sessions.
 - [ ] Blind pairwise quality evaluation (D-008). Not started; no prompts, no harness.
-- [ ] Compare local models (D-009): the first attempt on 2026-10-11 is withdrawn. The comparison page was showing only one of the two replies, so its 9 / 7 / 4 result is invalid. Redo with the fixed page.
+- [x] Compare local models (D-009), first valid pass: blind comparison by Jacquez on the fixed page, 2026-10-11. Preference a draw (`qwen2.5:3b` 6, `llama3.2:3b` 5, same 9); `llama3.2:3b` met more rules (5 of 9 against 3) and won on personality. No case for switching. (An earlier attempt the same day is withdrawn: the page was showing only one reply.)
+- [ ] Honesty: both models met only 1–2 of 6 honesty rules. Needs work before the quality gate can pass.
 - [x] Comparison page fixed so a rule has to be judged explicitly, and so both replies are actually visible (2026-10-11).
-- [ ] Redo the rule checks with the fixed page.
+- [x] Rule checks redone with the fixed page (2026-10-11).
 - [ ] Local-vs-hybrid thresholds written down before the quality test. Still an open question in `DECISIONS.md`.
 - [x] Better voice, first step: Samantha is the default (D-018).
 - [ ] Better voice, second step: evaluate Enhanced or Premium voices (D-013). None are installed on this Mac; the helper already labels them when they are.
