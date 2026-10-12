@@ -22,6 +22,9 @@
     .side .tools { display: flex; align-items: center; gap: 12px; margin-top: 12px; flex-wrap: wrap; font-size: 12px; color: var(--text-2); }
     .votes { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 4px; }
     .votes .ghost { font-size: 13px; padding: 9px 16px; }
+    .judge { display: inline-flex; align-items: center; gap: 6px; }
+    .ghost.on { color: var(--cyan); border-color: var(--cyan); background: rgba(59, 227, 255, 0.1); }
+    .needs { text-align: center; font-size: 12px; color: var(--amber); margin: 10px 0 0; }
     table.result { border-collapse: collapse; width: 100%; font-size: 13.5px; }
     table.result th, table.result td { text-align: left; padding: 7px 10px; border-bottom: 1px solid rgba(110, 200, 255, 0.1); }
     table.result th { color: var(--text-3); font-weight: 500; }
@@ -52,9 +55,10 @@
         <p class="rule" id="rule" hidden></p>
       </div>
       <div class="sides">
-        <div class="glass card side"><h3>LEFT</h3><div class="reply" id="left"></div><div class="tools"><button class="ghost" type="button" data-hear="left">Hear it</button><label class="toggle" data-pass="left" hidden><input type="checkbox" /><span>Meets the rule above</span></label></div></div>
-        <div class="glass card side"><h3>RIGHT</h3><div class="reply" id="right"></div><div class="tools"><button class="ghost" type="button" data-hear="right">Hear it</button><label class="toggle" data-pass="right" hidden><input type="checkbox" /><span>Meets the rule above</span></label></div></div>
+        <div class="glass card side"><h3>LEFT</h3><div class="reply" id="left"></div><div class="tools"><button class="ghost" type="button" data-hear="left">Hear it</button><span class="judge" data-pass="left" hidden>Rule: <button class="ghost" type="button" data-judge="yes">Meets it</button><button class="ghost" type="button" data-judge="no">Doesn’t</button></span></div></div>
+        <div class="glass card side"><h3>RIGHT</h3><div class="reply" id="right"></div><div class="tools"><button class="ghost" type="button" data-hear="right">Hear it</button><span class="judge" data-pass="right" hidden>Rule: <button class="ghost" type="button" data-judge="yes">Meets it</button><button class="ghost" type="button" data-judge="no">Doesn’t</button></span></div></div>
       </div>
+      <p class="needs" id="needs" hidden>Say whether each side meets the rule before choosing.</p>
       <div class="votes">
         <button class="ghost" type="button" data-vote="left">Left is better</button>
         <button class="ghost" type="button" data-vote="tie">About the same</button>

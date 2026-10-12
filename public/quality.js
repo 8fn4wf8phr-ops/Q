@@ -10,6 +10,23 @@ let pairs = [];
 let votes = [];
 let at = 0;
 let audio = null;
+// For prompts with a rule: each side has to be judged yes or no before a vote
+// counts. An unanswered rule is never recorded as a failure.
+const judged = { left: null, right: null };
+
+function refreshJudging() {
+  const p = pairs[at];
+  for (const side of ['left', 'right']) {
+    document.querySelectorAll(`[data-pass="${side}"] [data-judge]`).forEach((b) => {
+      const on = judged[side] === (b.dataset.judge === 'yes');
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', String(on));
+    });
+  }
+  const waiting = !!p?.check && (judged.left === null || judged.right === null);
+  $('#needs').hidden = !waiting;
+  document.querySelectorAll('[data-vote]').forEach((b) => { b.disabled = waiting; });
+}
 
 async function readRun(input, key) {
   runs[key] = null;
@@ -68,10 +85,10 @@ function show() {
   $('#rule').textContent = p.check ? `Rule for this one: ${p.check}` : '';
   for (const side of ['left', 'right']) {
     $(`#${side}`).textContent = p[sideKey(p, side)];
-    const pass = document.querySelector(`[data-pass="${side}"]`);
-    pass.hidden = !p.check;
-    pass.querySelector('input').checked = false;
+    document.querySelector(`[data-pass="${side}"]`).hidden = !p.check;
+    judged[side] = null;
   }
+  refreshJudging();
   window.scrollTo({ top: 0 });
 }
 
@@ -79,9 +96,9 @@ function vote(choice) {
   const p = pairs[at];
   const v = { id: p.id, winner: choice === 'tie' ? 'tie' : sideKey(p, choice) };
   if (p.check) {
-    const passed = (side) => document.querySelector(`[data-pass="${side}"] input`).checked;
-    v.passA = passed(p.left === 'a' ? 'left' : 'right');
-    v.passB = passed(p.left === 'a' ? 'right' : 'left');
+    if (judged.left === null || judged.right === null) return;
+    v.passA = judged[p.left === 'a' ? 'left' : 'right'];
+    v.passB = judged[p.left === 'a' ? 'right' : 'left'];
   }
   votes.push(v);
   audio?.pause();
@@ -131,6 +148,10 @@ $('#fileB').addEventListener('change', (e) => readRun(e.target, 'b'));
 $('#begin').addEventListener('click', () => start(runs.a, runs.b));
 document.querySelectorAll('[data-vote]').forEach((b) => b.addEventListener('click', () => vote(b.dataset.vote)));
 document.querySelectorAll('[data-hear]').forEach((b) => b.addEventListener('click', () => hear(b.dataset.hear)));
+document.querySelectorAll('[data-pass]').forEach((group) => group.querySelectorAll('[data-judge]').forEach((b) => b.addEventListener('click', () => {
+  judged[group.dataset.pass] = b.dataset.judge === 'yes';
+  refreshJudging();
+})));
 $('#copyResult').addEventListener('click', async () => {
   const text = JSON.stringify(summary(), null, 1);
   try {
