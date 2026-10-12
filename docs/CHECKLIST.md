@@ -61,7 +61,8 @@ Covers the whole roadmap in `BRIEF.md`, v0.1 through v1.1+. v0.1 is itemised bec
 
 ## 6. ~30-turn benchmark — done
 - [x] Run by Jacquez, 2026-10-11: 140 voice turns exported (113 in one session with VS Code open, on power, built-in mic). Warm p50 1.53 s, p90 2.42 s. Results in `STATUS.md`.
-- [ ] Follow-ups it exposed: one warm turn in four is slowed by the history trim, and keep-warm stops when the page is hidden.
+- [x] Follow-ups it exposed, both built 2026-10-11: trim priming (trim turns 1.15 s → 0.19–0.30 s of prompt processing) and a heartbeat so keep-warm continues when the page is hidden.
+- [ ] Confirm both in a real session after restarting Q.
 - Unblocked: the export exists. Confirm item 5 with a few turns first.
 - `scripts/bench-cache.mjs` is not this benchmark. It measures prompt-cache behaviour with typed turns.
 
@@ -79,7 +80,9 @@ Covers the whole roadmap in `BRIEF.md`, v0.1 through v1.1+. v0.1 is itemised bec
 ## Also in the v0.1 goal, not started
 - [x] Quality test tooling built: 20 prompts, a runner through Q's real pipeline, a hand-filled cloud-reference template, and a blind comparison page.
 - [ ] First quality test (20-prompt blind comparison, D-008): not yet run blind. Needs a second set of replies (another local model or a cloud reference) and the thresholds below.
-- [ ] Write down the local-vs-hybrid thresholds before that test (open question in `DECISIONS.md`).
+- [x] Local-vs-hybrid thresholds written down and adopted (D-027): 40% preferred or tied, 5 of 6 honesty rules, warm p90 under 2.5 s.
+- [x] Replies generated for `llama3.2:3b` and `qwen2.5:3b`; cloud-reference template created.
+- [ ] Jacquez: fill in the cloud template, then do the blind comparisons in `/quality.html`.
 
 # v0.2 — tune personality, continuity and speed; blind quality evaluation; better macOS voice
 
@@ -104,7 +107,7 @@ Nothing here is finished. Some of it was started early while fixing v0.1.
 - [ ] Speed: the first words can be clipped because the mic opens fresh on every press.
 - [ ] Continuity within a conversation is limited to the last 4–8 turns (`trimHistory()`); nothing carries across sessions.
 - [ ] Blind pairwise quality evaluation (D-008). Not started; no prompts, no harness.
-- [ ] Compare 2–3 local models (D-009). Only `llama3.2:3b` has been run.
+- [ ] Compare 2–3 local models (D-009). `qwen2.5:3b` is installed and its quality replies are generated; the blind comparison against `llama3.2:3b` is not done.
 - [ ] Local-vs-hybrid thresholds written down before the quality test. Still an open question in `DECISIONS.md`.
 - [x] Better voice, first step: Samantha is the default (D-018).
 - [ ] Better voice, second step: evaluate Enhanced or Premium voices (D-013). None are installed on this Mac; the helper already labels them when they are.

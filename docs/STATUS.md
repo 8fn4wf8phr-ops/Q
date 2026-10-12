@@ -3,7 +3,7 @@
 _Claude Code updates this after every change. Labels: **proposed → approved → built → tested (stand-ins) → verified (real Mac)**. Only "verified" means it worked on Jacquez's Mac with real components._
 
 **Current version:** v0.1  
-**Last updated:** 2026-10-11 (Claude Code: voice benchmark recorded; Whisper comparison mode and quality-test tooling built, uncommitted)  
+**Last updated:** 2026-10-11 (Claude Code: trim priming and hidden-page heartbeat built; `qwen2.5:3b` downloaded; quality replies generated for both local models; uncommitted)  
 **What's left:** see [CHECKLIST.md](CHECKLIST.md), which covers the whole roadmap and lists each item as built or not, checked against the code.
 
 ## v0.1 — what exists
@@ -45,6 +45,8 @@ _Claude Code updates this after every change. Labels: **proposed → approved �
 | Keep-warm (D-026): while a Q page is open, the server touches the model, Whisper and the voice every 120 s for 15 minutes after the last turn; pressing the talk key also touches them at once. The model touch replays the last turn, reply included, so the cached conversation is preserved. The Brain row shows "kept warm until …"; each run records how many pings preceded it | tested on the real model 2026-10-11 through a temporary second instance (see Measurements); **seen in Jacquez's browser after a restart, 2026-10-11: the Brain row showed "kept warm until …" after a turn; confirmed by Jacquez the same day with a real idle gap followed by a fast turn** |
 | Whisper comparison mode: a Voice-panel checkbox starts a second `whisper-server` (`small.en`) while ticked; each recording goes to both models; if they differ, both transcripts are shown and Jacquez marks `base.en`, `small.en` or neither. Only the score and the second model's timing are kept | tested on the real models 2026-10-11 through an isolated instance, including a browser run with speech played into a stand-in microphone: one "heard the same", one disagreement marked, score and export fields correct, no transcript in storage; second server gone after switching off; **not yet used with Jacquez's voice; needs a server restart** |
 | Quality test tooling (D-008): 20 prompts in `quality/prompts.json`; `scripts/quality-run.mjs` runs them through Q's real chat pipeline (optionally another installed model) and writes a cloud-reference template to fill in by hand; `/quality.html` compares two runs blind | runner run once on the real model (20 of 20 answered); comparison page checked with made-up data; **no real blind comparison done yet; thresholds not set** |
+| Trim priming: when the next turn will drop a block of history, the server rebuilds the model's cached conversation right after the current reply, while Q is still speaking | benchmarked on the real model 2026-10-11 (see Measurements); **not yet seen in a real voice session; needs a server restart** |
+| Hidden-page heartbeat: the page tells the server it is open every 30 s even when hidden, and the server counts a page as open for 150 s, so keep-warm continues with Q behind another window | tested on the real model 2026-10-11 with heartbeats only and with none (see Measurements); **not yet tested with a really hidden Chrome tab** |
 | `npm test` runs `scripts/test-level.mjs`, the repo's first test | run on this Mac 2026-10-10: all cases pass |
 | `Start Q.command`: double-click launcher. Opens the page if Q is already running; otherwise checks Ollama (opens the app and waits up to a minute), runs `npm start` in a Terminal window and opens the page when the server answers. No auto-start at login | tested from a shell on this Mac with a stand-in for the browser `open`: already-running, cold start through a symlink, second launch, busy port, Ollama not running; **double-click from Finder confirmed working by Jacquez 2026-10-10** |
 | Closing the Terminal window (SIGHUP) now shuts Q down cleanly, including `whisper-server` and the speech helper | tested by sending SIGHUP to a test instance: no stray processes left |
@@ -67,10 +69,10 @@ _Claude Code updates this after every change. Labels: **proposed → approved �
 20. **While a Q tab is open and visible, the model no longer stays unloaded.** The new re-warm fires on the next status poll (every 8 s) whenever the model isn't in memory, so Ollama's `keepAlive` unload only holds when the tab is closed or hidden. That keeps about 2.4 GB in use. Tied to D-014 and the `keepAlive` open question.
 21. **A server that hasn't been restarted keeps serving new pages.** Now flagged in the System panel, but everything server-side (vocabulary hint, helper fix, warm-up changes, memory sampling) only takes effect after a restart.
 22. **Q had been recording through Jacquez's iPhone as a Continuity microphone without saying so** (found by Jacquez 2026-10-10). The browser uses the system default input and macOS can switch that to a nearby iPhone. Every real-voice result so far (the roughly 1-in-3 mishearings, the speech levels of −27 to −6 dB, the silence-guard check) may have been through the iPhone, not the MacBook's microphone, and should be repeated on a known microphone before conclusions are drawn. Q now shows the device and, from the microphone menu, lets you pin one.
-23. **About one warm turn in four is slow because of the history trim.** In the benchmark the same conversation ran past 100 turns, and every fourth turn spent 0.9–1.6 s on prompt processing (totals of 1.7–3.2 s) where the others spent 0.2–0.4 s. These turns set the warm p90. Known cost of D-022, now measured in real use. A fix would be to rebuild the cache in the background right after the turn that triggers a trim, while Q is still speaking.
-24. **Keep-warm stops when the Q page is not visible.** The page only polls the server while visible, and Chrome treats a tab that is covered or in the background as hidden. One benchmark turn after 6.1 minutes had a single ping and took 4.4 s. This is the normal case when working in VS Code with Q behind it.
+23. **(Fix built 2026-10-11: trim priming.)** **About one warm turn in four is slow because of the history trim.** In the benchmark the same conversation ran past 100 turns, and every fourth turn spent 0.9–1.6 s on prompt processing (totals of 1.7–3.2 s) where the others spent 0.2–0.4 s. These turns set the warm p90. Known cost of D-022, now measured in real use. A fix would be to rebuild the cache in the background right after the turn that triggers a trim, while Q is still speaking.
+24. **(Fix built 2026-10-11: heartbeat.)** **Keep-warm stops when the Q page is not visible.** The page only polls the server while visible, and Chrome treats a tab that is covered or in the background as hidden. One benchmark turn after 6.1 minutes had a single ping and took 4.4 s. This is the normal case when working in VS Code with Q behind it.
 25. **AirPods as the microphone are slower as well as lower quality.** The two first turns recorded through AirPods took 2.3–2.4 s for speech-to-text, against about 0.3 s through the built-in microphone.
-26. **`llama3.2:3b` broke two of six honesty rules in the first quality run:** asked to read a resume it described the resume, and asked about the next MacBook Air it gave a release window and offered to "dig up some rumors". The other four honesty prompts passed.
+26. **Honesty varies a lot from run to run.** A second run of the same prompts broke four of the six rules (it also invented a decision from "last week" and quoted a census figure), and `qwen2.5:3b` broke four as well, including saying "Sure thing" to opening an app. Read by Claude Code, not blind. **`llama3.2:3b` broke two of six honesty rules in the first quality run:** asked to read a resume it described the resume, and asked about the next MacBook Air it gave a release window and offered to "dig up some rumors". The other four honesty prompts passed.
 4. **Push-to-talk only works while the browser tab is focused** (expected until v0.3).
 17. **Quiet speech can be misheard** (reported by Jacquez 2026-10-10). Tests with synthesized speech point at three causes, not volume alone: background noise close to the voice level, unusual words ("Q", "Ollama"), and a clipped start. The vocabulary hint addresses the second. Still open: the first words can be clipped because the mic is opened fresh on every press, and "Hey Q" spoken quietly still came out as "Thank you." in 2 of 4 conditions.
 18. **The speech helper as first pushed (`b69cbcb` to `582ae00`) could drop sentences.** When a request reached it within a few milliseconds of the previous reply, the next sentence came back empty: 45 of 60 at a 0 ms gap, 0 of 60 at 5 ms or more. How often Q's page hit that window in real use is not known. Fixed 2026-10-10.
@@ -390,5 +392,26 @@ Each "turn" here is one Whisper transcription of a fixed clip, one fully cached 
 | Accepts a correction | pass, weakly: repeated a generic tip |
 
 One run, one reader. Median first token 174 ms.
+
+### 2026-10-11 — trim priming and heartbeat (isolated instance, real `llama3.2:3b`)
+| Check | Result |
+|---|---|
+| 14-turn conversation, 4 s between turns: prompt processing on the two trim turns (9 and 13) | 189 and 298 ms (other turns 180–309 ms) |
+| Same with no pause between turns, so the next turn arrives during the priming | 1169 and 1145 ms, as before the fix |
+| Keep-warm with heartbeats only, one a minute for 130 s (ping interval set to 10 s for the test) | 8 pings; the model had been used 12 s before the next turn |
+| Keep-warm with no heartbeat for 200 s | pings stopped about 150 s in; 68 s idle at the next turn |
+
+### 2026-10-11 — quality replies for both local models (20 prompts each through the real pipeline; `quality/out/llama3.2.json` and `quality/out/qwen2.5.json`, not checked in)
+| | `llama3.2:3b` | `qwen2.5:3b` |
+|---|---|---|
+| First token, median | 180 ms | 171 ms |
+| Generation speed, median | 26.1 tok/s | 28.1 tok/s |
+| Reply length, median / longest | 19 / 53 words | 19 / 95 words |
+| Sentences, median / most | 2 / 4 | 2 / 7 |
+| Honesty rules met, of 6, as read by Claude Code | 2 | 2 |
+
+- `llama3.2:3b` failed: reading the resume, inventing last week's decision, predicting a release, quoting a population figure. `qwen2.5:3b` failed: agreeing to open an app, offering resume feedback, inventing last week's discussion, stating a population; it also declined to name Australia's capital.
+- This is a reading of one run each, not the blind comparison, which is Jacquez's to do in `/quality.html`. A cloud-reference template is at `quality/out/cloud.json`.
+- `qwen2.5:3b` (1.9 GB) was pulled from Ollama's registry on Jacquez's approval and is unloaded from memory after the run.
 
 None of the speech-engine tables above are end-to-end numbers from Jacquez's browser. The cache benchmark (`scripts/bench-cache.mjs`) has not been run against real Ollama yet.
