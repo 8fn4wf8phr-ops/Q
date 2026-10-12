@@ -3,7 +3,7 @@
 _Claude Code updates this after every change. Labels: **proposed → approved → built → tested (stand-ins) → verified (real Mac)**. Only "verified" means it worked on Jacquez's Mac with real components._
 
 **Current version:** v0.1  
-**Last updated:** 2026-10-11 (Claude Code: first blind comparison recorded; comparison page now requires an explicit rule judgement)  
+**Last updated:** 2026-10-11 (Claude Code: comparison page layout fault fixed; the first blind comparison is withdrawn as invalid)  
 **What's left:** see [CHECKLIST.md](CHECKLIST.md), which covers the whole roadmap and lists each item as built or not, checked against the code.
 
 ## v0.1 — what exists
@@ -72,6 +72,7 @@ _Claude Code updates this after every change. Labels: **proposed → approved �
 23. **(Fix built 2026-10-11: trim priming.)** **About one warm turn in four is slow because of the history trim.** In the benchmark the same conversation ran past 100 turns, and every fourth turn spent 0.9–1.6 s on prompt processing (totals of 1.7–3.2 s) where the others spent 0.2–0.4 s. These turns set the warm p90. Known cost of D-022, now measured in real use. A fix would be to rebuild the cache in the background right after the turn that triggers a trim, while Q is still speaking.
 24. **(Fix built 2026-10-11: heartbeat.)** **Keep-warm stops when the Q page is not visible.** The page only polls the server while visible, and Chrome treats a tab that is covered or in the background as hidden. One benchmark turn after 6.1 minutes had a single ping and took 4.4 s. This is the normal case when working in VS Code with Q behind it.
 25. **AirPods as the microphone are slower as well as lower quality.** The two first turns recorded through AirPods took 2.3–2.4 s for speech-to-text, against about 0.3 s through the built-in microphone.
+28. **(Fixed 2026-10-11.)** The blind-comparison page showed only one of the two replies. Its reply cards used the class name `side`, which Q's main stylesheet assigns to a single grid area, so both cards landed in the same place and one covered the other. Present since the page was first added (`dd30c9b`); my checks at the time read the page's text and never looked at the layout. Reported by Jacquez; the first comparison was done in this state and is withdrawn. Cards renamed and confirmed side by side in a browser with the real result files.
 27. **(Fixed 2026-10-11.)** The blind-comparison page recorded an unticked rule box as a failure, so a session where the boxes were skipped looked like every reply broke its rule. Found in the first real comparison; the rule counts from that session are unusable. Each side now has explicit "Meets it" and "Doesn't" buttons, and a vote isn't accepted until both are answered (checked in a browser with made-up data).
 26. **Honesty varies a lot from run to run.** A second run of the same prompts broke four of the six rules (it also invented a decision from "last week" and quoted a census figure), and `qwen2.5:3b` broke four as well, including saying "Sure thing" to opening an app. Read by Claude Code, not blind. **`llama3.2:3b` broke two of six honesty rules in the first quality run:** asked to read a resume it described the resume, and asked about the next MacBook Air it gave a release window and offered to "dig up some rumors". The other four honesty prompts passed.
 4. **Push-to-talk only works while the browser tab is focused** (expected until v0.3).
@@ -415,7 +416,10 @@ One run, one reader. Median first token 174 ms.
 - This is a reading of one run each, not the blind comparison, which is Jacquez's to do in `/quality.html`. A cloud-reference template is at `quality/out/cloud.json`.
 - `qwen2.5:3b` (1.9 GB) was pulled from Ollama's registry on Jacquez's approval and is unloaded from memory after the run.
 
-### 2026-10-11 — first blind comparison: `llama3.2:3b` against `qwen2.5:3b` (Jacquez, `/quality.html`, 20 prompts, names hidden, sides random)
+### 2026-10-11 — first blind comparison: `llama3.2:3b` against `qwen2.5:3b` — **INVALID, do not use**
+**Withdrawn the same day.** The comparison page stacked the two reply cards on top of each other, so only one reply was visible for every prompt (known issue 28). The figures below came from choosing with one side hidden and say nothing reliable about either model. Kept for the record only.
+
+(Jacquez, `/quality.html`, 20 prompts, names hidden, sides random)
 | | `llama3.2:3b` | `qwen2.5:3b` | About the same |
 |---|---|---|---|
 | Preferred | 9 | 7 | 4 |
