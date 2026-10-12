@@ -50,7 +50,7 @@ const DEFAULTS = {
 const CONFIG = await loadConfig();
 // Raised whenever the page starts needing something new from the server, so a
 // page served by a server that hasn't been restarted can say so.
-const API_LEVEL = 4;
+const API_LEVEL = 5;
 const VERSION = await readFile(path.join(ROOT, 'package.json'), 'utf8').then((t) => JSON.parse(t).version).catch(() => null);
 let stopping = false;
 
@@ -530,8 +530,9 @@ async function streamChat(req, res) {
 async function streamChatInner(req, res) {
   const body = JSON.parse((await readBody(req, 1_000_000)).toString('utf8') || '{}');
   const history = Array.isArray(body.messages) ? body.messages : [];
-  const trimmed = trimHistory(history.filter((m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string'))
-    .map((m) => ({ role: m.role, content: stamped(m) }));
+  const valid = history.filter((m) => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string');
+  const kept = trimHistory(valid);
+  const trimmed = kept.map((m) => ({ role: m.role, content: stamped(m) }));
   const system = await systemPrompt();
 
   // The quality test (scripts/quality-run.mjs) sends its prompts through this
@@ -602,7 +603,15 @@ async function streamChatInner(req, res) {
           lastModelUse = Date.now();
           if (!bench) {
             keep.lastTurnAt = lastModelUse;
-            keep.messages = [{ role: 'system', content: system }, ...trimmed, ...(said ? [{ role: 'assistant', content: said }] : [])];
+            // What the next turn will send, up to the point where its new
+            // message starts. Usually that is this turn plus the reply. Every
+            // few turns the history cap drops a block instead, which changes
+            // the start of the prompt and would make the next turn reprocess
+            // everything; in that case the model is primed with the trimmed
+            // version now, while Q is still speaking.
+            const next = trimHistory([...valid, ...(said ? [{ role: 'assistant', content: said }] : []), { role: 'user', content: '' }]).slice(0, -1);
+            keep.messages = [{ role: 'system', content: system }, ...next.map((m) => ({ role: m.role, content: stamped(m) }))];
+            if (next[0] !== kept[0]) setTimeout(() => primeModel().catch(() => {}), 50);
           }
           const pingsSinceLastTurn = keep.sinceTurn;
           keep.sinceTurn = 0;
@@ -692,6 +701,20 @@ async function touchVoice() {
   if (tts.engine === 'helper' && helper.proc) await helperSpeak('Ok.', tts.voices.find((v) => v.name === CONFIG.sayVoice)?.id);
 }
 
+// The model alone, for when the cached conversation needs rebuilding (not a
+// keep-warm ping, so it isn't counted as one).
+async function primeModel() {
+  if (keep.busy || activeChats > 0 || warm.state !== 'ready') return false;
+  keep.busy = true;
+  try {
+    await touchModel();
+    lastModelUse = Date.now();
+    return true;
+  } finally {
+    keep.busy = false;
+  }
+}
+
 // Never overlaps a real turn, a warm-up or another touch.
 async function touchAll() {
   if (keep.busy || activeChats > 0 || warm.state !== 'ready') return false;
@@ -707,8 +730,11 @@ async function touchAll() {
 }
 
 const keepWarmUntil = () => (CONFIG.keepWarmMinutes && keep.lastTurnAt ? keep.lastTurnAt + CONFIG.keepWarmMinutes * 60_000 : 0);
-// A page counts as open if it polled status in the last 30 s (it polls every 8 s while visible).
-const pageOpen = () => Date.now() - keep.lastPollAt < 30_000;
+// A page counts as open if it checked in during the last 150 s. A visible page
+// polls status every 8 s; a hidden one (covered by another window, or in a
+// background tab) only sends a heartbeat, and browsers slow a hidden page's
+// timers to about once a minute.
+const pageOpen = () => Date.now() - keep.lastPollAt < 150_000;
 
 setInterval(() => {
   const now = Date.now();
@@ -836,6 +862,11 @@ const server = http.createServer(async (req, res) => {
         tts: { engine: tts.engine, available: tts.available, error: tts.available ? null : tts.lastError, note: tts.note, defaultVoice: tts.voices.some((v) => v.name === CONFIG.sayVoice) ? CONFIG.sayVoice : null },
         server: { host: '127.0.0.1', port: CONFIG.port, pid: process.pid, rssBytes: process.memoryUsage().rss },
       });
+    }
+    if (req.method === 'POST' && pathname === '/api/alive') {
+      keep.lastPollAt = Date.now();
+      res.writeHead(204);
+      return res.end();
     }
     if (req.method === 'POST' && pathname === '/api/keepwarm') {
       // The talk key just went down. Skip it if everything was used moments ago.

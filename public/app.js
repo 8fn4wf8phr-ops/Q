@@ -5,7 +5,7 @@ import { SCHEMA, MAX_RUNS, MIN_FOR_P90, IDLE_MS, kindOf, sameWords, summarize, b
 
 // What this page needs from the server (server.js API_LEVEL). A server started
 // before an update keeps serving new pages until it is restarted.
-const NEEDS_API = 4;
+const NEEDS_API = 5;
 
 const $ = (sel) => document.querySelector(sel);
 const els = {
@@ -895,3 +895,6 @@ await refreshStatus();
 checkDefaultMic();
 loadVoices();
 setInterval(() => { if (!document.hidden) refreshStatus(); }, 8000);
+// Tell the server this page is still open even while it is hidden, so keep-warm
+// carries on when Q sits behind another window.
+setInterval(() => { fetch('/api/alive', { method: 'POST' }).catch(() => {}); }, 30_000);
