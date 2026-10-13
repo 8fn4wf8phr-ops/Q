@@ -89,7 +89,8 @@ public/level.js    loudness check that skips Whisper on near-silent recordings (
 public/app.js      state machine, streaming, timing
 speech/q-speak.swift  speech helper source (compiled to bin/q-speak, which is not checked in)
 Start Q.command    double-click launcher (opens Q's window; without it, runs npm start and opens the browser)
-shell/             Q's window: Swift source, Info.plist and build script for bin/Q.app
+shell/             Q's window: Swift source, Info.plist, icon generators and build script for bin/Q.app
+public/mark.js     the Split-Core mark's shape, shared by the orb, the page and the icons (preview: /mark.html)
 scripts/setup.sh   one-time install/download
 scripts/bench-cache.mjs  prompt-cache benchmark (timings only)
 scripts/quality-run.mjs  runs the quality-test prompts through Q and saves the replies

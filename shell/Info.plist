@@ -6,6 +6,7 @@
   <key>CFBundleName</key><string>Q</string>
   <key>CFBundleExecutable</key><string>Q</string>
   <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleIconFile</key><string>Q</string>
   <key>CFBundleShortVersionString</key><string>0.2.0</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>LSUIElement</key><true/>

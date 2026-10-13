@@ -163,7 +163,15 @@ final class Shell: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigati
     window.contentView = web
 
     item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-    item.button?.title = "Q"
+    // The mark in one colour, which macOS tints for a light or dark menu bar. A plain letter if it isn't there.
+    if let url = Bundle.main.url(forResource: "menubar", withExtension: "svg"), let image = NSImage(contentsOf: url) {
+      image.size = NSSize(width: 18, height: 18)
+      image.isTemplate = true
+      item.button?.image = image
+      item.button?.setAccessibilityLabel("Q")
+    } else {
+      item.button?.title = "Q"
+    }
     let menu = NSMenu()
     menu.autoenablesItems = false
     statusLine = menu.addItem(withTitle: "Starting…", action: nil, keyEquivalent: "")

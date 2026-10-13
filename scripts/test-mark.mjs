@@ -48,6 +48,10 @@ check('without glow there is no halo', !full.includes('halo') && markSVG({ size:
 check('one-colour version uses only that colour', !/url\(#|#00E5FF|#A855F7/i.test(mono) && mono.includes('#000') && !mono.includes('<defs>'));
 check('gradient ids carry the prefix, so two marks can share a page', markSVG({ id: 'hdr' }).includes('id="hdr-upper"') && !markSVG({ id: 'hdr' }).includes('id="q-'));
 check('every gradient that is used is defined', [...full.matchAll(/url\(#([\w-]+)\)/g)].every((m) => full.includes(`id="${m[1]}"`)));
+const tiled = markSVG({ size: 1024, tile: 0.1, glow: true });
+check('a tile puts a rounded dark square behind the mark, inside its margin', /<rect x="102.4" y="102.4" width="819.2" height="819.2" rx="184.32"/.test(tiled) && tiled.indexOf('<rect') < tiled.indexOf('<path'), tiled.slice(0, 400));
+check('a tiled mark stays inside its tile', [...tiled.matchAll(/[ML](-?[\d.]+) (-?[\d.]+)/g)].every((m) => +m[1] >= 102.4 && +m[1] <= 921.6 && +m[2] >= 102.4 && +m[2] <= 921.6));
+check('the one-colour version never gets a tile', !markSVG({ size: 22, mono: '#000', tile: true }).includes('<rect'));
 check('same input, same output', markSVG({ size: 64 }) === markSVG({ size: 64 }));
 check('no NaN or undefined in the output', ![full, small, mono].some((s) => /NaN|undefined/.test(s)));
 check('everything is drawn inside the box', [...full.matchAll(/[ML](-?[\d.]+) (-?[\d.]+)/g)].every((m) => +m[1] >= 0 && +m[1] <= 256 && +m[2] >= 0 && +m[2] <= 256));

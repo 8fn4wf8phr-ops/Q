@@ -82,13 +82,23 @@ export const shapeFor = (size) => (size <= 32 ? SHAPES.small : SHAPES.full);
 //   glow   a soft halo behind the mark; the mark must read without it
 //   mono   one flat colour (for a menu bar icon), e.g. '#000'
 //   id     prefix for gradient ids, so several marks can share a page
-export function markSVG({ size = 64, shape, glow = false, mono = null, id = 'q' } = {}) {
+//   tile   a dark rounded square behind the mark, for places with a light or
+//          unknown background (app icon, browser tab). A number is the margin
+//          around the tile as a share of the size (macOS app icons leave one).
+export function markSVG({ size = 64, shape, glow = false, mono = null, id = 'q', tile = false } = {}) {
   const s = typeof shape === 'string' ? SHAPES[shape] : shape || shapeFor(size);
   const isSmall = s === SHAPES.small;
-  const c = size / 2;
-  const R = size * (glow ? 0.36 : 0.4); // leaves room for the tail, and for the halo when there is one
+  const margin = typeof tile === 'number' ? tile : 0;
+  const box = size * (1 - margin * 2);
+  // On a tile the mark sits a touch up and left, so ring and tail together look centred.
+  const c = size / 2 - (tile !== false ? box * 0.025 : 0);
+  const R = box * (tile !== false ? 0.33 : glow ? 0.36 : 0.4); // leaves room for the tail, and for the halo when there is one
   const out = [];
   const defs = [];
+  if (tile !== false && !mono) {
+    defs.push(`<linearGradient id="${id}-tile" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#121a30"/><stop offset="1" stop-color="#070a16"/></linearGradient>`);
+    out.push(`<rect x="${n(size * margin)}" y="${n(size * margin)}" width="${n(box)}" height="${n(box)}" rx="${n(box * 0.225)}" fill="url(#${id}-tile)"/>`);
+  }
   const fill = (key, colors, from, to) => {
     if (mono) return mono;
     const [x1, y1] = from;
@@ -99,9 +109,9 @@ export function markSVG({ size = 64, shape, glow = false, mono = null, id = 'q' 
 
   if (glow && !mono) {
     defs.push(`<radialGradient id="${id}-halo"><stop offset="0.45" stop-color="${PALETTE.blue}" stop-opacity="0.32"/><stop offset="0.75" stop-color="${PALETTE.violet}" stop-opacity="0.12"/><stop offset="1" stop-color="${PALETTE.violet}" stop-opacity="0"/></radialGradient>`);
-    out.push(`<circle cx="${c}" cy="${c}" r="${n(size * 0.5)}" fill="url(#${id}-halo)"/>`);
+    out.push(`<circle cx="${n(c)}" cy="${n(c)}" r="${n(tile !== false ? box * 0.46 : size * 0.5)}" fill="url(#${id}-halo)"/>`);
     // Keep the channel between ring and core dark; the halo belongs outside the ring.
-    out.push(`<circle cx="${c}" cy="${c}" r="${n(R * s.ringInner)}" fill="${PALETTE.navy}"/>`);
+    out.push(`<circle cx="${n(c)}" cy="${n(c)}" r="${n(R * s.ringInner)}" fill="${PALETTE.navy}"/>`);
   }
 
   // A hairline stroke in the fill colour rounds the corners; the gaps are cut wide enough to allow for it.
@@ -118,12 +128,12 @@ export function markSVG({ size = 64, shape, glow = false, mono = null, id = 'q' 
   out.push(`<path d="M${pts.map(([x, y]) => `${n(x)} ${n(y)}`).join('L')}Z" fill="${tailPaint}" stroke="${tailPaint}" stroke-width="${edge}" stroke-linejoin="round"/>`);
 
   if (mono) {
-    out.push(`<circle cx="${c}" cy="${c}" r="${n(R * s.core * 0.8)}" fill="${mono}"/>`);
+    out.push(`<circle cx="${n(c)}" cy="${n(c)}" r="${n(R * s.core * 0.8)}" fill="${mono}"/>`);
   } else if (isSmall) {
-    out.push(`<circle cx="${c}" cy="${c}" r="${n(R * s.core)}" fill="#16226b"/>`);
+    out.push(`<circle cx="${n(c)}" cy="${n(c)}" r="${n(R * s.core)}" fill="#16226b"/>`);
   } else {
     defs.push(`<radialGradient id="${id}-core" cx="0.38" cy="0.3" r="0.8"><stop offset="0" stop-color="#3550c8"/><stop offset="0.45" stop-color="#14206a"/><stop offset="1" stop-color="#070b22"/></radialGradient>`);
-    out.push(`<circle cx="${c}" cy="${c}" r="${n(R * s.core)}" fill="url(#${id}-core)" stroke="${PALETTE.blue}" stroke-opacity="0.55" stroke-width="${n(R * 0.02)}"/>`);
+    out.push(`<circle cx="${n(c)}" cy="${n(c)}" r="${n(R * s.core)}" fill="url(#${id}-core)" stroke="${PALETTE.blue}" stroke-opacity="0.55" stroke-width="${n(R * 0.02)}"/>`);
     out.push(`<ellipse cx="${n(c - R * 0.16)}" cy="${n(c - R * 0.22)}" rx="${n(R * 0.2)}" ry="${n(R * 0.11)}" fill="#fff" opacity="0.13" transform="rotate(-28 ${n(c - R * 0.16)} ${n(c - R * 0.22)})"/>`);
   }
 

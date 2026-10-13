@@ -154,8 +154,8 @@ Not started. Q runs only as a page in a browser tab.
 - [ ] Split-Core Q mark (D-017, D-036), from `docs/design/split-core-reference.webp`:
   - [x] Phase 1, shape and static SVG (2026-10-13); preview at `/mark.html`.
   - [x] Phases 2 and 3, live orb in the new shape with all the earlier animations kept (2026-10-13; Jacquez: works).
-  - [ ] Phase 4, header mark, tab icon, avatar; page palette.
-  - [ ] Phase 5, app icon and menu bar icon.
+  - [ ] Phase 4, header mark, tab icon, avatar; page palette: built 2026-10-13, waiting for Jacquez.
+  - [ ] Phase 5, app icon and menu bar icon: built 2026-10-13, waiting for Jacquez.
 - [x] Related, already built: `Start Q.command` double-click launcher. It is a convenience, not the wrapper.
 - [x] Related, already built: the speech helper is Swift, which a Swift shell could absorb.
 

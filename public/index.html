@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Q</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='30' cy='30' r='20' fill='none' stroke='%233be3ff' stroke-width='7'/%3E%3Cpath d='M38 38 L56 56' stroke='%23e9fbff' stroke-width='7' stroke-linecap='round'/%3E%3C/svg%3E" />
+  <link rel="icon" id="favicon" href="data:," />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -12,15 +12,7 @@
 
   <header class="top">
     <div class="brand">
-      <svg class="mark" viewBox="0 0 64 64" aria-hidden="true">
-        <defs>
-          <linearGradient id="mk" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stop-color="#3be3ff" /><stop offset=".6" stop-color="#2f6bff" /><stop offset="1" stop-color="#8b5cff" />
-          </linearGradient>
-        </defs>
-        <circle cx="30" cy="30" r="19" fill="none" stroke="url(#mk)" stroke-width="6" />
-        <path d="M37 37 L55 55" stroke="#e9fbff" stroke-width="6" stroke-linecap="round" />
-      </svg>
+      <div class="mark" id="brandMark" aria-hidden="true"></div>
       <div>
         <strong>Q</strong>
         <span>Personal assistant · runs on this Mac</span>

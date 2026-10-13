@@ -1,6 +1,7 @@
 import { QCore } from './core.js';
 import { Recorder, Player, BrowserSpeaker, blobToWav16k, micName } from './audio.js';
 import { autoMic, WIRELESS } from './micpick.js';
+import { markSVG } from './mark.js';
 import { takeChunks } from './chunk.js';
 import { SCHEMA, MAX_RUNS, MIN_FOR_P90, IDLE_MS, kindOf, sameWords, summarize, buildExport } from './stats.js';
 
@@ -907,6 +908,14 @@ els.mic.addEventListener('pointercancel', () => pttUp());
 els.mic.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } });
 
 els.stop.addEventListener('click', () => interrupt());
+// ---------- the mark ----------
+// Every static Q on the page is drawn from the same description as the live orb.
+const svgUrl = (svg) => `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+$('#brandMark').innerHTML = markSVG({ size: 34, shape: 'full', id: 'hdr' });
+document.documentElement.style.setProperty('--q-mark', svgUrl(markSVG({ size: 52, shape: 'small', id: 'av' }))); // beside Q's replies
+// A browser tab can be light or dark, so the tab icon carries its own dark tile.
+$('#favicon').href = `data:image/svg+xml,${encodeURIComponent(markSVG({ size: 64, shape: 'small', tile: true, id: 'tab' }))}`;
+
 // A click on the orb interrupts Q if it is busy; in compact mode an idle click opens the panel.
 function orbClick() {
   if (['thinking', 'speaking', 'transcribing'].includes(S.phase)) interrupt();
