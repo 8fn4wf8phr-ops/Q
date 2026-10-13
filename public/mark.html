@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Q — the Split-Core mark</title>
+  <style>
+    body { margin: 0; padding: 24px; background: #0B0F1A; color: #9fb2cc; font: 13px/1.5 -apple-system, sans-serif; }
+    h1 { font-size: 16px; color: #e8f3ff; margin: 0 0 4px; }
+    h2 { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: #63748f; margin: 28px 0 10px; font-weight: 600; }
+    .row { display: flex; align-items: flex-end; gap: 28px; flex-wrap: wrap; padding: 18px; border-radius: 14px; border: 1px solid rgba(110, 200, 255, 0.14); }
+    .row.light { background: #f2f3f5; color: #444; border-color: #ddd; }
+    .row.mid { background: #6b7280; color: #fff; }
+    figure { margin: 0; text-align: center; }
+    figcaption { margin-top: 6px; font-size: 11px; }
+    .ref { display: flex; gap: 24px; align-items: center; flex-wrap: wrap; }
+  </style>
+</head>
+<body>
+  <h1>Q — the Split-Core mark, phase 1</h1>
+  <p>Drawn from one description of the shape in <code>mark.js</code>. Nothing else in Q uses it yet.</p>
+
+  <h2>Large (compare with docs/design/split-core-reference.webp)</h2>
+  <div class="ref"><figure id="big"></figure><figure id="bigGlow"></figure></div>
+
+  <h2>Sizes, no glow, dark background</h2>
+  <div class="row" id="dark"></div>
+  <h2>With the halo</h2>
+  <div class="row" id="glow"></div>
+  <h2>No glow, light background</h2>
+  <div class="row light" id="light"></div>
+  <h2>No glow, mid-grey background</h2>
+  <div class="row mid" id="mid"></div>
+  <h2>One colour (for a menu bar icon)</h2>
+  <div class="row light" id="mono"></div>
+
+  <script type="module">
+    import { markSVG } from './mark.js';
+    const sizes = [256, 128, 64, 32, 22, 16];
+    let k = 0;
+    const fig = (svg, label) => `<figure>${svg}<figcaption>${label}</figcaption></figure>`;
+    const fill = (id, opts) => { document.getElementById(id).innerHTML = sizes.map((size) => fig(markSVG({ size, id: `m${k++}`, ...opts }), `${size} px`)).join(''); };
+    fill('dark', {});
+    fill('glow', { glow: true });
+    fill('light', {});
+    fill('mid', {});
+    document.getElementById('mono').innerHTML = [32, 22, 16].map((size) => fig(markSVG({ size, mono: '#111', id: `m${k++}` }), `${size} px`)).join('');
+    document.getElementById('big').innerHTML = markSVG({ size: 240, id: 'big' }) + '<figcaption>this build, no glow</figcaption>';
+    document.getElementById('bigGlow').innerHTML = markSVG({ size: 240, glow: true, id: 'bigg' }) + '<figcaption>this build, with halo</figcaption>';
+  </script>
+</body>
+</html>
