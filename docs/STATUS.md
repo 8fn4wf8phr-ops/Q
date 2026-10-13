@@ -3,7 +3,7 @@
 _Claude Code updates this after every change. Labels: **proposed → approved → built → tested (stand-ins) → verified (real Mac)**. Only "verified" means it worked on Jacquez's Mac with real components._
 
 **Current version:** v0.2 (v0.1 closed by Jacquez on 2026-10-11, D-028)  
-**Last updated:** 2026-10-12 (Claude Code: microphone hold and keep-warm from startup checked against Jacquez's late-evening export)  
+**Last updated:** 2026-10-13 (Claude Code: Swift shell spike for D-010 built and probed; clipped first words closed)  
 **What's left:** see [CHECKLIST.md](CHECKLIST.md), which covers the whole roadmap and lists each item as built or not, checked against the code.
 
 ## v0.1 — what exists
@@ -51,6 +51,7 @@ _Claude Code updates this after every change. Labels: **proposed → approved �
 | Clipped-first-words measurement: each voice turn records how long the microphone took to open after the key went down, and whether sound was already present in the first 100 ms of the recording. Shown as "Mic opened in …" in the latency panel; both in the run data, with a summary in the export | tested 2026-10-12: `npm test`, and a browser run with a stand-in microphone (opened in 0.09, 0.28 and 0.68 s as set up; flagged only the case where speech was already playing); **real data from Jacquez's 2026-10-12 session (19 voice turns, built-in microphone): see Measurements** |
 | Microphone kept open for 60 s after each voice turn, so a follow-up press starts recording at once instead of waiting for the device. Nothing is recorded while it is held; a new recorder is made per turn. Let go when the device list changes, when another microphone is picked, or when the box under Voice is unticked. Not used for phone or wireless microphones. Run data records `micHeld` per turn and splits mic-open time into kept-open and opened-fresh. While held, the macOS microphone indicator stays on | tested with stand-ins (stand-in microphone with a 0.5 s opening delay: second press recording after 0.08 s without reopening the device; release on device change and on untick confirmed). **Verified on the real Mac 2026-10-12: 16 follow-up presses recorded after 0.05–0.07 s (median 0.06 s) against 0.55 and 1.30 s for the two fresh opens; the hold ended as designed after a 62 s gap.** Release on device change not exercised on the real Mac |
 | Keep-warm now also runs from the startup warm-up, not only after a turn (15 minutes, page open). A turn is labelled cold only if the model load took over 1 s (was 0.3 s) | tested with stand-ins (status shows the keep-warm window open before any turn). **Seen once on the real Mac 2026-10-12: the first turn after a restart, with three pings before it (six minutes or more), reached first audio in 1.31 s; the same case took 7.8 s the day before.** No turn was mislabelled cold |
+| **Spike, not part of Q** (`spike/`, for D-010): a 140-line Swift shell that shows Q's page in a floating WKWebView window with a menu bar item and a global ⌥Space push-to-talk key. Built with the `swiftc` already on this Mac; the app is 112 KB | built; first probe run on the real Mac 2026-10-13 (see Measurements). **No voice turn has been made in it yet** |
 | Speech helper resilience: the warm-up sentence may take up to 2 minutes, each sentence's time limit starts when it reaches the front of the queue, and if the helper stops Q speaks through `say` and restarts the helper (up to 3 tries in a row) | tested 2026-10-12 on an isolated instance: helper killed three times, Q switched to `say` with a "while it restarts" note and was back on the helper about 20 s later each time; **not yet seen through a real cold boot** |
 | `npm test` runs `scripts/test-level.mjs`, the repo's first test | run on this Mac 2026-10-10: all cases pass |
 | `Start Q.command`: double-click launcher. Opens the page if Q is already running; otherwise checks Ollama (opens the app and waits up to a minute), runs `npm start` in a Terminal window and opens the page when the server answers. No auto-start at login | tested from a shell on this Mac with a stand-in for the browser `open`: already-running, cold start through a symlink, second launch, busy port, Ollama not running; **double-click from Finder confirmed working by Jacquez 2026-10-10** |
@@ -562,8 +563,22 @@ All three conditions are met, so by the rule as written Q stays local. Limits: e
 | First turn after the restart (three keep-warm pings before it) | 1.31 s, first token 0.50 s |
 | Turns that dropped history (9, 13, 17) | prompt processing 0.21, 0.35, 0.33 s |
 
-- Sound was present in the first 100 ms on 8 of the 16 kept-open presses (0 of the 2 fresh ones). With the mic live within 0.06 s this flag no longer means what it did: it now also catches speech that starts with the press and, probably, the sound of the key itself next to the built-in microphone. Which of these it is has not been checked. It does not show whether words spoken before the press are being lost.
+- Sound was present in the first 100 ms on 8 of the 16 kept-open presses (0 of the 2 fresh ones). With the mic live within 0.06 s this flag no longer means what it did: it now also catches speech that starts with the press and, probably, the sound of the key itself next to the built-in microphone. Which of these it is has not been checked. It does not show whether words spoken before the press are being lost. Jacquez reported the same evening that nothing was lost in this session, so clipped first words is closed.
 - Replies were back to 17–57 tokens (the earlier session that evening ran 90–157), speech-to-text about 0.3 s, generation 17–20 tokens per second, swap 9.6–9.8 GB of 10.2 GB.
 - The largest stage was waiting for the first speakable piece of the reply: over 0.7 s on 7 of 18 turns, up to 1.24 s.
+
+### 2026-10-13 — Swift + WKWebView shell spike (D-010), first probe on the real Mac
+| | |
+|---|---|
+| Build | 5 s with `swiftc`, no installs; app bundle 112 KB |
+| Launch → window up | 1.1 s |
+| Launch → Q's page loaded | 3.4 s |
+| WebKit treats `http://127.0.0.1:4141` as a secure page | yes |
+| Microphone inside the shell | works: macOS asked once, Jacquez allowed it, the page opened "MacBook Air Microphone" |
+| Recording formats Q's page asks for | all three supported |
+| Global ⌥Space key | registered with no extra macOS permission |
+| Memory footprint, page idle | about 207 MB: shell 22, web content 119, WebKit GPU 58, WebKit networking 8 |
+
+Not yet known: whether a whole voice turn works (recording, the mic hold, Q's voice playing without a click), and how this compares with Tauri, which is not installed. Chrome's own footprint at the same moment was 6.9 GB over 74 processes, but that is every tab, not Q's.
 
 None of the speech-engine tables above are end-to-end numbers from Jacquez's browser. The cache benchmark (`scripts/bench-cache.mjs`) has not been run against real Ollama yet.

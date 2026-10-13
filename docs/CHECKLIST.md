@@ -76,7 +76,7 @@ Covers the whole roadmap in `BRIEF.md`, v0.1 through v1.1+. v0.1 is itemised bec
 ## Added along the way (not one of the seven)
 - [x] Whisper vocabulary hint for names and jargon (`whisperPrompt` in `server.js`); 23 → 33 of 40 exact transcripts on synthesized speech.
 - [ ] Try it with Jacquez's own quiet speech.
-- [ ] Open: the first words can be clipped because the mic opens fresh on every press.
+- [x] The first words could be clipped because the mic opened fresh on every press. Closed 2026-10-12 by the 60 s mic hold (D-030); Jacquez reports nothing lost in a real session.
 
 ## Also in the v0.1 goal, not started
 - [x] Quality test tooling built: 20 prompts, a runner through Q's real pipeline, a hand-filled cloud-reference template, and a blind comparison page.
@@ -115,7 +115,7 @@ Nothing here is finished. Some of it was started early while fixing v0.1.
 - [x] Real numbers in (2026-10-12): the mic takes a median 0.66 s to open, up to 1.35 s; sound was already present on 2 of 19 turns.
 - [x] Clipped first words, step 2 built (2026-10-12, D-030): the mic stays open for 60 s after each turn. Tested with a stand-in microphone.
 - [x] Mic hold checked on the real microphone (2026-10-12): 16 follow-up presses recorded after a median 0.06 s.
-- [ ] Ask Jacquez whether first words are still being lost; the "already speaking" flag fired on 8 of 16 kept-open presses and may just be the key sound.
+- [x] Jacquez (2026-10-12): no first words lost in the session with the mic hold. The "already speaking" flag on 8 of 16 kept-open presses is therefore not a sign of lost speech.
 - [ ] Still open: the first press after a pause of more than 60 s pays the full 0.66 s.
 - [x] Keep Q warm from startup, not only after the first turn (built 2026-10-12, D-031; first turn 6.4 minutes after a restart had taken 7.8 s).
 - [x] Seen in real use (2026-10-12): first turn after a restart, three pings before it, 1.31 s.
@@ -135,6 +135,9 @@ Nothing here is finished. Some of it was started early while fixing v0.1.
 Not started. Q runs only as a page in a browser tab.
 
 - [ ] Choose the native wrapper: Swift + WKWebView vs Tauri vs Electron (D-010, open). This comes first.
+  - [x] Swift shell spike built and probed (2026-10-13): mic works, ⌥Space registers, about 207 MB idle.
+  - [ ] A real voice turn inside the Swift shell.
+  - [ ] Decide whether the Tauri comparison is still wanted.
 - [ ] Floating Q Core window. No code.
 - [ ] Menu bar item. No code.
 - [ ] Global push-to-talk. No code; the key is undecided, and today Space only works while the tab is focused.
