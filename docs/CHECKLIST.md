@@ -106,6 +106,8 @@ Nothing here is finished. Some of it was started early while fixing v0.1.
 
 - [x] Persona written as example replies, not percentages (`persona.md`, D-012).
 - [ ] Persona followed reliably. One typed run showed long first sentences, example lines copied word for word, and one invented claim.
+  - [x] Tightened 2026-10-13 (version B): first sentence median 8 → 6 words, replies 19 → 15, honesty unchanged over 7–8 runs each.
+  - [ ] Still open: the occasional very long reply (up to 118 words), and about one invented claim in 45 honesty replies under either persona.
 - [x] Speed: persistent speech helper (D-021) and stable prompt prefix (D-006, D-022) are in the code.
 - [x] Speed: first turn after a few idle minutes was slow because macOS compresses the model's memory. Measured and decided (D-026): ping every 120 s for 15 minutes after the last turn, plus warm on key press. Built 2026-10-11; 0.82 s after 5 idle minutes against 3.0 s without.
 - [x] Keep-warm confirmed in real use by Jacquez, 2026-10-11: a turn after an idle gap with the tab open was fast.
