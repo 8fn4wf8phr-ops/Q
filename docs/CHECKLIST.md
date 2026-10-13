@@ -62,7 +62,8 @@ Covers the whole roadmap in `BRIEF.md`, v0.1 through v1.1+. v0.1 is itemised bec
 ## 6. ~30-turn benchmark — done
 - [x] Run by Jacquez, 2026-10-11: 140 voice turns exported (113 in one session with VS Code open, on power, built-in mic). Warm p50 1.53 s, p90 2.42 s. Results in `STATUS.md`.
 - [x] Follow-ups it exposed, both built 2026-10-11: trim priming (trim turns 1.15 s → 0.19–0.30 s of prompt processing) and a heartbeat so keep-warm continues when the page is hidden.
-- [ ] Confirm both in a real session after restarting Q.
+- [x] Trim priming confirmed in a real session (2026-10-12 export: trim turns at 0.23–0.38 s of prompt processing).
+- [x] Keep-warm confirmed across 6–9 minute gaps in real use (first audio in 1.0–1.4 s). Not confirmed specifically with the page hidden.
 - Unblocked: the export exists. Confirm item 5 with a few turns first.
 - `scripts/bench-cache.mjs` is not this benchmark. It measures prompt-cache behaviour with typed turns.
 
@@ -111,7 +112,13 @@ Nothing here is finished. Some of it was started early while fixing v0.1.
 - [x] Speed: Q can start speaking at the first clause instead of the first full sentence (`public/chunk.js`, D-025); about 0.5 s sooner on roughly half of replies in a 30-prompt test.
 - [x] First-clause speech heard by Jacquez, 2026-10-10: keep it on.
 - [x] Clipped first words, step 1 (2026-10-12): Q now measures how long the mic takes to open and flags recordings where speech had already started.
-- [ ] Clipped first words, step 2: after a real session, decide from the numbers whether to hold the mic open briefly between turns.
+- [x] Real numbers in (2026-10-12): the mic takes a median 0.66 s to open, up to 1.35 s; sound was already present on 2 of 19 turns.
+- [x] Clipped first words, step 2 built (2026-10-12, D-030): the mic stays open for 60 s after each turn. Tested with a stand-in microphone.
+- [ ] Check the mic hold on the real microphone (follow-up presses should show "Mic was ready in" at a few hundredths of a second).
+- [ ] Still open: the first press after a pause of more than 60 s pays the full 0.66 s.
+- [x] Keep Q warm from startup, not only after the first turn (built 2026-10-12, D-031; first turn 6.4 minutes after a restart had taken 7.8 s).
+- [ ] Confirm in real use after a restart.
+- [x] A turn is labelled cold only when the model load took over 1 s (was 0.3 s, which mislabelled a slow warm turn).
 - [ ] Continuity within a conversation is limited to the last 4–8 turns (`trimHistory()`); nothing carries across sessions.
 - [x] Blind pairwise quality evaluation (D-008): tooling built and first comparisons done, 2026-10-11 (two local models, a cloud reference, and old against new persona).
 - [x] Compare local models (D-009), first valid pass: blind comparison by Jacquez on the fixed page, 2026-10-11. Preference a draw (`qwen2.5:3b` 6, `llama3.2:3b` 5, same 9); `llama3.2:3b` met more rules (5 of 9 against 3) and won on personality. No case for switching. (An earlier attempt the same day is withdrawn: the page was showing only one reply.)

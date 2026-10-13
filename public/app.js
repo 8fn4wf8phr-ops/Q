@@ -38,6 +38,7 @@ const els = {
   engineNote: $('#engineNote'),
   speak: $('#speak'),
   clauseFirst: $('#clauseFirst'),
+  holdMic: $('#holdMic'),
   micSelect: $('#micSelect'),
   micNote: $('#micNote'),
   compare: $('#compare'),
@@ -55,7 +56,8 @@ const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matc
 const core = new QCore(els.canvas, { reducedMotion });
 core.start();
 
-const recorder = new Recorder();
+const recorder = new Recorder({ onRelease: () => renderStatus() });
+const MIC_HOLD_MS = 60_000;
 // Two ways to speak, same callbacks: `player` plays WAVs the server made with
 // `say`; `speaker` uses the browser's own speech engine (local voices only).
 const speechEvents = {
@@ -85,6 +87,7 @@ const S = {
   arming: null,
   speak: store.get('speak', true),
   clauseFirst: store.get('clauseFirst', true),
+  holdMic: store.get('holdMic', true),
   micId: store.get('micId', ''), // '' = follow the system default
   micLabel: store.get('micLabel', ''),
   tally: store.get('tally', { same: 0, base: 0, alt: 0, neither: 0 }), // Whisper comparison score: counts only
@@ -189,7 +192,10 @@ function setMic(name, source) {
 // ask the browser which input is the system default. Names stay hidden until
 // the microphone has been allowed once.
 // It also fills the microphone menu in the Voice panel.
-async function checkDefaultMic() {
+async function checkDefaultMic(e) {
+  // A held microphone is pinned to the device it was opened on. When devices
+  // come or go the default may have moved, so let go and open afresh next press.
+  if (e?.type === 'devicechange' && recorder.held) recorder.release();
   let inputs = [];
   try { inputs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput'); } catch { /* device list unavailable */ }
   const defaultName = micName((inputs.find((d) => d.deviceId === 'default') || inputs[0])?.label);
@@ -214,7 +220,7 @@ function micRow() {
   if (!mic.name) return row('Mic', 'not known yet', { kind: 'idle', text: 'Unknown' }, 'the browser shows its name after the first recording');
   const note = WIRELESS.test(mic.name) ? ' · phone or wireless mic: often slower to start and lower quality' : '';
   const how = S.micId ? 'your choice' : 'system default';
-  const sub = (mic.source === 'recording' ? `used for your last recording · ${how}` : `${how} · used on the next press`) + (mic.changed ? ' · changed this session' : '') + note;
+  const sub = (mic.source === 'recording' ? `used for your last recording · ${how}` : `${how} · used on the next press`) + (recorder.held ? ' · kept open for your next press' : '') + (mic.changed ? ' · changed this session' : '') + note;
   const badge = note ? { kind: 'warn', text: 'Check' } : mic.source === 'recording' ? { kind: 'ok', text: 'In use' } : { kind: 'idle', text: S.micId ? 'Chosen' : 'Default' };
   return row('Mic', escapeHtml(mic.name), badge, sub);
 }
@@ -248,8 +254,7 @@ function renderStatus() {
   const warmUntil = !kw ? null
     : !kw.minutes ? 'keep-warm off'
     : kw.until ? `kept warm until ${new Date(kw.until).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
-    : kw.hadTurn ? 'keep-warm ended · restarts on your next turn'
-    : 'keep-warm starts after your first turn';
+    : 'keep-warm ended · restarts on your next turn';
   const meta = [o.parameterSize, o.quantization, o.modelLoaded ? warmUntil : null].filter(Boolean).join(' · ');
   const ears = s.stt.ready ? { kind: 'ok', text: s.stt.mode === 'server' ? 'Ready' : 'Ready (slow)' } : { kind: 'warn', text: 'Missing' };
   const voice = canSpeak() ? { kind: 'ok', text: 'Ready' } : { kind: 'warn', text: 'Missing' };
@@ -579,6 +584,7 @@ function recordTurn(t) {
     firstChunk: t.firstChunk ?? null,
     mic: t.mic ?? null,
     armMs: t.armMs ?? null,
+    micHeld: t.micHeld ?? null,
     startsLoud: t.level ? t.level.startsLoud : null,
     pings: st.pingsSinceLastTurn ?? null,
     sttAltMs: t.sttAltMs ?? null,
@@ -658,13 +664,17 @@ async function pttUp() {
   S.ptt = false;
   els.mic.classList.remove('held');
   try { await S.arming; } catch { return; }
+  // Wireless mics are not held: an open Bluetooth mic drops Q's voice to call quality.
+  recorder.holdMs = S.holdMic && !WIRELESS.test(recorder.deviceName || '') ? MIC_HOLD_MS : 0;
   const result = await recorder.stop();
+  renderStatus();
   if (!result) return settle();
   if (result.durationMs < 300) { settle(); els.stateDetail.textContent = 'Too short — hold while you talk'; return; }
   const t = newTurn('voice', released);
   turn = t;
   t.mic = recorder.deviceName;
   t.armMs = S.armMs ?? null;
+  t.micHeld = !!recorder.reused;
   t.captureMs = result.durationMs;
   setPhase('transcribing');
   try {
@@ -704,7 +714,9 @@ async function pttUp() {
 const fmtS = (ms) => (ms == null ? '—' : `${(ms / 1000).toFixed(2)} s`);
 const fmtDb = (db) => (Number.isFinite(db) ? `${db.toFixed(0)} dB` : 'silence');
 // Cold = the model was loaded for this turn, or the turn waited on the startup warm-up.
-const coldMs = (st) => (st.loadMs > 300 ? st.loadMs : 0) + (st.warmupWaitMs || 0);
+// A loaded model reports a load time of a few tens of ms, up to about 0.4 s on
+// a Mac short of memory; a real load takes seconds.
+const coldMs = (st) => (st.loadMs > 1000 ? st.loadMs : 0) + (st.warmupWaitMs || 0);
 // warm / idle / cold for the panel, from the same rule the statistics use.
 function loadLabel(st) {
   if (coldMs(st)) return `${(coldMs(st) / 1000).toFixed(1)} s (cold${st.warmupWaitMs ? ', waited on warm-up' : ''})`;
@@ -747,7 +759,7 @@ function renderLatency() {
     + `<div class="lrow plain"><span></span><span>Model load this turn</span><b>${st ? loadLabel(st) : '—'}</b></div>`
     + (t.source === 'voice' ? `<div class="lrow plain"><span></span><span>You spoke for</span><b>${fmtS(t.captureMs)}</b></div>` : '')
     + (t.level ? `<div class="lrow plain"><span></span><span>Input level</span><b>${fmtDb(t.level.peakDb)} · ${fmtS(t.level.loudMs)} of sound</b></div>` : '')
-    + (t.armMs != null ? `<div class="lrow plain"><span></span><span>Mic opened in</span><b>${fmtS(t.armMs)}${t.level?.startsLoud ? ' · you were already speaking' : ''}</b></div>` : '');
+    + (t.armMs != null ? `<div class="lrow plain"><span></span><span>${t.micHeld ? 'Mic was ready in' : 'Mic opened in'}</span><b>${fmtS(t.armMs)}${t.level?.startsLoud ? ' · you were already speaking' : ''}</b></div>` : '');
 }
 
 function renderHistory() {
@@ -849,6 +861,7 @@ els.micSelect.addEventListener('change', () => {
   store.set('micId', S.micId);
   store.set('micLabel', S.micLabel);
   mic.source = null; // the last recording no longer says what the next one will use
+  if (recorder.held) recorder.release();
   checkDefaultMic();
 });
 els.compare.addEventListener('change', async () => {
@@ -869,6 +882,8 @@ els.compareReset.addEventListener('click', () => {
 });
 els.clauseFirst.checked = S.clauseFirst;
 els.clauseFirst.addEventListener('change', () => { S.clauseFirst = els.clauseFirst.checked; store.set('clauseFirst', S.clauseFirst); });
+els.holdMic.checked = S.holdMic;
+els.holdMic.addEventListener('change', () => { S.holdMic = els.holdMic.checked; store.set('holdMic', S.holdMic); if (!S.holdMic && recorder.held) recorder.release(); });
 els.speak.checked = S.speak;
 els.speak.addEventListener('change', () => { S.speak = els.speak.checked; store.set('speak', S.speak); if (!S.speak) stopSpeech(); });
 els.voice.addEventListener('change', () => {

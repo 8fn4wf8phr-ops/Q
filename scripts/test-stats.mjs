@@ -86,6 +86,8 @@ check('the header carries the tally as counts only', same(cm.header.compareTally
 const mo = buildExport([{ ...run(1), armMs: 120.4, startsLoud: false }, { ...run(2), armMs: 480, startsLoud: true }, { ...run(3), armMs: 'soon', startsLoud: 'yes' }, run(4)]);
 check('each run keeps the mic-open time and the early-speech flag', mo.runs[0].armMs === 120.4 && mo.runs[1].startsLoud === true && mo.runs[2].armMs === null && mo.runs[2].startsLoud === null);
 check('the summary reports mic-open time and how often speech had already started', mo.summary.micOpen.n === 2 && mo.summary.micOpen.medianMs === 120.4 && mo.summary.micOpen.speechAlreadyStarted === 1 && mo.summary.micOpen.of === 2, JSON.stringify(mo.summary.micOpen));
+const mh = buildExport([{ ...run(1), armMs: 600, micHeld: false, startsLoud: true }, { ...run(2), armMs: 8, micHeld: true, startsLoud: false }, { ...run(3), armMs: 12, micHeld: true }, { ...run(4), armMs: 700, micHeld: 'yes' }]);
+check('the summary separates presses where the mic was kept open', mh.summary.micOpen.keptOpen.n === 2 && mh.summary.micOpen.keptOpen.medianMs === 8 && mh.summary.micOpen.openedFresh.n === 1 && mh.summary.micOpen.openedFresh.speechAlreadyStarted === 1 && mh.runs[3].micHeld === null, JSON.stringify(mh.summary.micOpen));
 check('garbage input does not throw', same(buildExport(null).runs, []) && cleanRun(undefined).total === null);
 
 console.log(failed ? `\n${failed} case(s) failed\n` : '\nAll cases passed\n');

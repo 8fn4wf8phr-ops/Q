@@ -689,7 +689,7 @@ async function streamChatInner(req, res) {
 // word. The model request replays the last turn exactly, reply included, so
 // Ollama's cached conversation still ends where the conversation ends.
 
-const keep = { lastTurnAt: 0, lastPollAt: 0, lastTouchAt: 0, busy: false, sinceTurn: 0, messages: null, clip: null };
+const keep = { startedAt: 0, lastTurnAt: 0, lastPollAt: 0, lastTouchAt: 0, busy: false, sinceTurn: 0, messages: null, clip: null };
 let activeChats = 0;
 
 // A short spoken clip at 16 kHz for Whisper, made once with Q's own voice.
@@ -765,7 +765,10 @@ async function touchAll() {
   }
 }
 
-const keepWarmUntil = () => (CONFIG.keepWarmMinutes && keep.lastTurnAt ? keep.lastTurnAt + CONFIG.keepWarmMinutes * 60_000 : 0);
+// The window runs from the last turn, or from the startup warm-up if there has
+// been no turn yet, so the first thing you say after starting Q is fast too.
+const keepWarmFrom = () => Math.max(keep.lastTurnAt, keep.startedAt);
+const keepWarmUntil = () => (CONFIG.keepWarmMinutes && keepWarmFrom() ? keepWarmFrom() + CONFIG.keepWarmMinutes * 60_000 : 0);
 // A page counts as open if it checked in during the last 150 s. A visible page
 // polls status every 8 s; a hidden one (covered by another window, or in a
 // background tab) only sends a heartbeat, and browsers slow a hidden page's
@@ -957,7 +960,7 @@ server.listen(CONFIG.port, '127.0.0.1', async () => {
   console.log(`  model    ${CONFIG.model}  ${o.reachable ? (o.modelInstalled ? '✓ installed' : '✗ not pulled — run: ollama pull ' + CONFIG.model) : '✗ Ollama not running'}`);
   console.log(`  speech   whisper.cpp (${stt.mode})${stt.mode === 'none' ? '  ✗ ' + stt.lastError : '  ✓'}`);
   console.log(`  voice    ${tts.engine}${tts.available ? '  ✓' : '  ✗ ' + tts.lastError}\n`);
-  if (o.reachable && o.modelInstalled) startWarmup().then((w) => console.log(w ? `  model loaded in ${w.loadMs.toFixed(0)} ms, system prompt primed in ${w.promptMs.toFixed(0)} ms\n` : `  model warm-up failed: ${warm.error}\n`));
+  if (o.reachable && o.modelInstalled) startWarmup().then((w) => { if (w) keep.startedAt = Date.now(); console.log(w ? `  model loaded in ${w.loadMs.toFixed(0)} ms, system prompt primed in ${w.promptMs.toFixed(0)} ms\n` : `  model warm-up failed: ${warm.error}\n`); });
 });
 
 const shutdown = () => { stopping = true; stt.serverProc?.kill(); cmp.proc?.kill(); helper.proc?.kill(); process.exit(0); };

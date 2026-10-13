@@ -3,7 +3,7 @@
 _Claude Code updates this after every change. Labels: **proposed → approved → built → tested (stand-ins) → verified (real Mac)**. Only "verified" means it worked on Jacquez's Mac with real components._
 
 **Current version:** v0.2 (v0.1 closed by Jacquez on 2026-10-11, D-028)  
-**Last updated:** 2026-10-12 (Claude Code: speech helper no longer killed by a slow first sentence after boot, and restarts itself if it stops; uncommitted)  
+**Last updated:** 2026-10-12 (Claude Code: microphone kept open for 60 s between turns; keep-warm from startup; cold label threshold raised to 1 s; evening export recorded)  
 **What's left:** see [CHECKLIST.md](CHECKLIST.md), which covers the whole roadmap and lists each item as built or not, checked against the code.
 
 ## v0.1 — what exists
@@ -46,9 +46,11 @@ _Claude Code updates this after every change. Labels: **proposed → approved �
 | Keep-warm (D-026): while a Q page is open, the server touches the model, Whisper and the voice every 120 s for 15 minutes after the last turn; pressing the talk key also touches them at once. The model touch replays the last turn, reply included, so the cached conversation is preserved. The Brain row shows "kept warm until …"; each run records how many pings preceded it | tested on the real model 2026-10-11 through a temporary second instance (see Measurements); **seen in Jacquez's browser after a restart, 2026-10-11: the Brain row showed "kept warm until …" after a turn; confirmed by Jacquez the same day with a real idle gap followed by a fast turn** |
 | Whisper comparison mode: a Voice-panel checkbox starts a second `whisper-server` (`small.en`) while ticked; each recording goes to both models; if they differ, both transcripts are shown and Jacquez marks `base.en`, `small.en` or neither. Only the score and the second model's timing are kept | tested on the real models 2026-10-11 through an isolated instance, including a browser run with speech played into a stand-in microphone: one "heard the same", one disagreement marked, score and export fields correct, no transcript in storage; second server gone after switching off; **used by Jacquez on his real voice 2026-10-11 for 43 turns (see Measurements)** |
 | Quality test tooling (D-008): 20 prompts in `quality/prompts.json`; `scripts/quality-run.mjs` runs them through Q's real chat pipeline (optionally another installed model) and writes a cloud-reference template to fill in by hand; `/quality.html` compares two runs blind | runner run once on the real model (20 of 20 answered); comparison page checked with made-up data; **no real blind comparison done yet; thresholds not set** |
-| Trim priming: when the next turn will drop a block of history, the server rebuilds the model's cached conversation right after the current reply, while Q is still speaking | benchmarked on the real model 2026-10-11 (see Measurements); **not yet seen in a real voice session; needs a server restart** |
+| Trim priming: when the next turn will drop a block of history, the server rebuilds the model's cached conversation right after the current reply, while Q is still speaking | benchmarked on the real model 2026-10-11 (see Measurements); **confirmed in real use by Jacquez's 2026-10-12 export: the three trim turns that evening processed their prompts in 0.23–0.38 s, and five more in the 2026-10-11 comparison session in 0.27–0.49 s (was 0.9–1.6 s)** |
 | Hidden-page heartbeat: the page tells the server it is open every 30 s even when hidden, and the server counts a page as open for 150 s, so keep-warm continues with Q behind another window | tested on the real model 2026-10-11 with heartbeats only and with none (see Measurements); **not yet tested with a really hidden Chrome tab** |
-| Clipped-first-words measurement: each voice turn records how long the microphone took to open after the key went down, and whether sound was already present in the first 100 ms of the recording. Shown as "Mic opened in …" in the latency panel; both in the run data, with a summary in the export | tested 2026-10-12: `npm test`, and a browser run with a stand-in microphone (opened in 0.09, 0.28 and 0.68 s as set up; flagged only the case where speech was already playing); **no real microphone data yet** |
+| Clipped-first-words measurement: each voice turn records how long the microphone took to open after the key went down, and whether sound was already present in the first 100 ms of the recording. Shown as "Mic opened in …" in the latency panel; both in the run data, with a summary in the export | tested 2026-10-12: `npm test`, and a browser run with a stand-in microphone (opened in 0.09, 0.28 and 0.68 s as set up; flagged only the case where speech was already playing); **real data from Jacquez's 2026-10-12 session (19 voice turns, built-in microphone): see Measurements** |
+| Microphone kept open for 60 s after each voice turn, so a follow-up press starts recording at once instead of waiting for the device. Nothing is recorded while it is held; a new recorder is made per turn. Let go when the device list changes, when another microphone is picked, or when the box under Voice is unticked. Not used for phone or wireless microphones. Run data records `micHeld` per turn and splits mic-open time into kept-open and opened-fresh. While held, the macOS microphone indicator stays on | tested with stand-ins (stand-in microphone with a 0.5 s opening delay: second press recording after 0.08 s without reopening the device; release on device change and on untick confirmed). **Not yet tried on the real microphone** |
+| Keep-warm now also runs from the startup warm-up, not only after a turn (15 minutes, page open). A turn is labelled cold only if the model load took over 1 s (was 0.3 s) | tested with stand-ins (status shows the keep-warm window open before any turn). **Needs a Q restart; not yet seen in real use** |
 | Speech helper resilience: the warm-up sentence may take up to 2 minutes, each sentence's time limit starts when it reaches the front of the queue, and if the helper stops Q speaks through `say` and restarts the helper (up to 3 tries in a row) | tested 2026-10-12 on an isolated instance: helper killed three times, Q switched to `say` with a "while it restarts" note and was back on the helper about 20 s later each time; **not yet seen through a real cold boot** |
 | `npm test` runs `scripts/test-level.mjs`, the repo's first test | run on this Mac 2026-10-10: all cases pass |
 | `Start Q.command`: double-click launcher. Opens the page if Q is already running; otherwise checks Ollama (opens the app and waits up to a minute), runs `npm start` in a Terminal window and opens the page when the server answers. No auto-start at login | tested from a shell on this Mac with a stand-in for the browser `open`: already-running, cold start through a symlink, second launch, busy port, Ollama not running; **double-click from Finder confirmed working by Jacquez 2026-10-10** |
@@ -119,7 +121,7 @@ _Claude Code updates this after every change. Labels: **proposed → approved �
 v0.1 is closed (D-028); everything that was listed here is done. For v0.2, in order:
 1. Jacquez: restart Q, then a normal session past 8 turns with Q left behind VS Code for a few minutes, to confirm trim priming and the hidden-page heartbeat, and to hear the new persona.
 2. Jacquez: Whisper on his real voice (the top v0.2 item): tick "Compare Whisper models on my voice" for 20–30 turns on the built-in microphone and paste the score.
-3. Claude Code, on approval: clipped first words (the microphone opens fresh on every press).
+3. Jacquez: restart Q and reload the page, press "Clear", then a session of follow-up turns to check the microphone hold on the real mic (look for "Mic was ready in" in the latency panel) and that the first turn after a restart is fast.
 4. Evaluate Enhanced or Premium macOS voices (D-013).
 5. Before v0.3: choose the native wrapper (D-010).
 
@@ -531,5 +533,24 @@ All three conditions are met, so by the rule as written Q stays local. Limits: e
 - `base.en` was wrong on at least 3 of 43 turns (7%). That is far below the "about 1 in 3" seen on 2026-10-10, when Q was recording through an iPhone or AirPods and the vocabulary hint was not yet active. The microphone and the hint, not the model size, account for most of that earlier figure.
 - What this does not show: turns where both models heard the same wrong words count as "same", so the true error rate of either model may be higher than these numbers.
 - The microphone used and the per-turn timings of each model are in the run data, which was not exported for this session.
+
+### 2026-10-12 — evening session (Jacquez; 19 voice turns in one conversation, built-in microphone, on power, VS Code running; export of 199 stored turns, older ones included)
+**Microphone opening (the clipped-first-words question):**
+| | |
+|---|---|
+| Key down → actually recording, median | 0.66 s |
+| Range | 0.42–1.35 s; four of 19 took over 1.1 s |
+| Turns where sound was already present when recording began | 2 of 19 |
+
+**That session's speed (computed from the 19 runs):** key release → first audio median 1.86 s, 90th percentile 3.19 s. Slower than the 2026-10-11 benchmark (1.53 s). Speech-to-text ran at about 0.5 s (was 0.35 s) and generation at 15–18 tokens per second (was 19–20), with 8.9–9.7 GB of 10.2 GB swap in use. Thirteen of the 19 replies ran past 90 tokens, where earlier sessions averaged about 20; two first sentences took 1.8 and 2.0 s to arrive.
+
+**Fixes seen working in real use:**
+- Trim priming: the three turns that dropped history that evening (turns 9, 13 and 17) spent 0.38, 0.23 and 0.34 s on prompt processing.
+- Keep-warm across long gaps: turns after gaps of 6.5, 7.6 and 9.4 minutes (3 to 5 pings each) reached first audio in 1.0–1.4 s. Whether the page was hidden during those gaps is not recorded.
+
+**New gaps this export shows:**
+- _(Fixed 2026-10-12, stand-in tested.)_ The first turn after a restart is not kept warm. On 2026-10-11 Q was restarted and first used 6.4 minutes later: 7.8 s, with first token at 6.8 s. Keep-warm only starts counting from a turn, and there had not been one yet.
+- _(Fixed 2026-10-12: threshold now 1 s.)_ One turn was labelled cold with a model load time of 0.36 s. Nothing was loaded; the Mac was slow. The 0.3 s threshold for "cold" is too tight under memory pressure.
+- The export's own summary mixes every stored session (192 warm turns, including the comparison-mode sessions with a second Whisper model running). "Clear" was not pressed before this session.
 
 None of the speech-engine tables above are end-to-end numbers from Jacquez's browser. The cache benchmark (`scripts/bench-cache.mjs`) has not been run against real Ollama yet.

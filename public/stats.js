@@ -94,12 +94,19 @@ export function summarize(runs) {
     micOpen: (() => {
       const timed = voice.filter((r) => typeof r.armMs === 'number');
       const judged = voice.filter((r) => typeof r.startsLoud === 'boolean');
+      // keptOpen: the microphone was still open from the turn before.
+      const split = (held) => {
+        const of = timed.filter((r) => r.micHeld === held);
+        return { n: of.length, medianMs: num(percentile(of.map((r) => r.armMs), 0.5)), speechAlreadyStarted: of.filter((r) => r.startsLoud === true).length };
+      };
       return {
         n: timed.length,
         medianMs: num(percentile(timed.map((r) => r.armMs), 0.5)),
         p90Ms: timed.length >= MIN_FOR_P90 ? num(percentile(timed.map((r) => r.armMs), 0.9)) : null,
         speechAlreadyStarted: judged.filter((r) => r.startsLoud).length,
         of: judged.length,
+        keptOpen: split(true),
+        openedFresh: split(false),
       };
     })(),
     stageMedians: { stt: stage('stt'), firstToken: stage('firstToken'), firstSentence: stage('firstSentence'), voiceSynth: stage('voiceSynth'), promptMs: stage('promptMs') },
@@ -126,6 +133,7 @@ export function cleanRun(run) {
   out.kind = kindOf(out);
   // Speech was already under way when the microphone opened (null if not measured).
   out.startsLoud = typeof run?.startsLoud === 'boolean' ? run.startsLoud : null;
+  out.micHeld = typeof run?.micHeld === 'boolean' ? run.micHeld : null;
   out.mic = typeof run?.mic === 'string' ? run.mic.slice(0, 80) : null;
   out.sys = cleanSys(run?.sys);
   return out;

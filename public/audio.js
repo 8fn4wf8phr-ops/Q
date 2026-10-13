@@ -16,20 +16,36 @@ function rms(analyser, buf) {
 export const micName = (label) => (label ? label.replace(/^Default - /, '').trim() : null);
 
 export class Recorder {
-  constructor() { this.active = false; }
+  // holdMs: how long to keep the microphone open after a recording, so the
+  // next press starts at once instead of waiting for the device. 0 = close it
+  // straight away. Nothing is recorded while it is held.
+  constructor({ onRelease } = {}) { this.active = false; this.holdMs = 0; this.onRelease = onRelease; }
+
+  get held() { return !this.active && !!this.stream; }
 
   // deviceId: record from exactly that microphone, or fail. Without it the
   // browser uses the system default, which macOS can change on its own.
   async start(deviceId) {
-    this.stream = await navigator.mediaDevices.getUserMedia({
-      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true, ...(deviceId ? { deviceId: { exact: deviceId } } : {}) },
-    });
-    this.ctx = new AC();
-    const src = this.ctx.createMediaStreamSource(this.stream);
-    this.analyser = this.ctx.createAnalyser();
-    this.analyser.fftSize = 1024;
-    this.buf = new Float32Array(this.analyser.fftSize);
-    src.connect(this.analyser);
+    clearTimeout(this.holdTimer);
+    const track = this.stream?.getAudioTracks()[0];
+    this.reused = !!track && this.openedFor === (deviceId || '') && track.readyState === 'live' && !track.muted;
+    if (!this.reused) {
+      this.release();
+      this.stream = await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true, ...(deviceId ? { deviceId: { exact: deviceId } } : {}) },
+      });
+      this.openedFor = deviceId || '';
+      const stream = this.stream;
+      // Unplugged or taken away while held: forget it so the next press opens a fresh one.
+      stream.getAudioTracks()[0]?.addEventListener('ended', () => { if (this.stream === stream && !this.active) this.release(); });
+      this.ctx = new AC();
+      const src = this.ctx.createMediaStreamSource(this.stream);
+      this.analyser = this.ctx.createAnalyser();
+      this.analyser.fftSize = 1024;
+      this.buf = new Float32Array(this.analyser.fftSize);
+      src.connect(this.analyser);
+    }
+    if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
     const mime = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm'].find((t) => window.MediaRecorder?.isTypeSupported?.(t));
     this.chunks = [];
     this.rec = new MediaRecorder(this.stream, mime ? { mimeType: mime } : undefined);
@@ -51,17 +67,23 @@ export class Recorder {
     this.rec.stop();
     await stopped;
     const durationMs = performance.now() - this.startedAt;
-    this.release();
+    if (this.holdMs > 0) {
+      this.active = false;
+      this.holdTimer = setTimeout(() => this.release(), this.holdMs);
+    } else this.release();
     return { blob: new Blob(this.chunks, { type: this.rec.mimeType || 'audio/webm' }), durationMs };
   }
 
   release() {
+    clearTimeout(this.holdTimer);
+    const had = !!this.stream;
     this.active = false;
     this.stream?.getTracks().forEach((t) => t.stop());
     this.ctx?.close().catch(() => {});
     this.analyser = null;
     this.stream = null;
     this.ctx = null;
+    if (had) this.onRelease?.();
   }
 }
 
