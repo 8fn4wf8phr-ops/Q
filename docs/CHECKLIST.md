@@ -114,10 +114,11 @@ Nothing here is finished. Some of it was started early while fixing v0.1.
 - [x] Clipped first words, step 1 (2026-10-12): Q now measures how long the mic takes to open and flags recordings where speech had already started.
 - [x] Real numbers in (2026-10-12): the mic takes a median 0.66 s to open, up to 1.35 s; sound was already present on 2 of 19 turns.
 - [x] Clipped first words, step 2 built (2026-10-12, D-030): the mic stays open for 60 s after each turn. Tested with a stand-in microphone.
-- [ ] Check the mic hold on the real microphone (follow-up presses should show "Mic was ready in" at a few hundredths of a second).
+- [x] Mic hold checked on the real microphone (2026-10-12): 16 follow-up presses recorded after a median 0.06 s.
+- [ ] Ask Jacquez whether first words are still being lost; the "already speaking" flag fired on 8 of 16 kept-open presses and may just be the key sound.
 - [ ] Still open: the first press after a pause of more than 60 s pays the full 0.66 s.
 - [x] Keep Q warm from startup, not only after the first turn (built 2026-10-12, D-031; first turn 6.4 minutes after a restart had taken 7.8 s).
-- [ ] Confirm in real use after a restart.
+- [x] Seen in real use (2026-10-12): first turn after a restart, three pings before it, 1.31 s.
 - [x] A turn is labelled cold only when the model load took over 1 s (was 0.3 s, which mislabelled a slow warm turn).
 - [ ] Continuity within a conversation is limited to the last 4–8 turns (`trimHistory()`); nothing carries across sessions.
 - [x] Blind pairwise quality evaluation (D-008): tooling built and first comparisons done, 2026-10-11 (two local models, a cloud reference, and old against new persona).
