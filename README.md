@@ -21,9 +21,9 @@ npm start
 
 4. Open http://127.0.0.1:4141 and allow the microphone when the browser asks.
 
-After the first run you can start Q by double-clicking **`Start Q.command`** in this folder. It makes sure Ollama is running, starts the server in a Terminal window and opens Q in its own window; if Q is already running it just brings Q forward. Close the Terminal window or press Ctrl+C in it to stop Q.
+After the first run you can start Q by double-clicking **`Start Q.command`** in this folder (or `bin/Q.app` itself). Q's window opens Ollama if needed, starts Q's server and shows a small orb in the top-right corner; the Terminal window the launcher opened can be closed. To stop Q, choose **Quit Q** from the **Q** menu bar item: that stops the server too. The server's output is in `~/Library/Logs/Q/server.log` (menu: Show server log). If the window isn't built, the launcher runs the server in the Terminal window and opens your browser, as before.
 
-**Q's window** (`bin/Q.app`, built from `shell/` by setup or `npm run build:shell`) floats above other windows and adds a **Q** item to the menu bar. Hold **⌥Space** in any app to talk; inside the window plain Space works too. macOS asks for the microphone once. Quitting the window from the menu bar leaves the server running, and the same page is still at http://127.0.0.1:4141 in a browser. While the window is running, ⌥Space no longer types a non-breaking space in other apps. If the window isn't built, the launcher opens the browser instead.
+**Q's window** (`bin/Q.app`, built from `shell/` by setup or `npm run build:shell`) floats above other windows and adds a **Q** item to the menu bar. Hold **⌥Space** in any app to talk; inside the window plain Space works too. macOS asks for the microphone once. Right-click the orb for the same menu as the menu bar item (Open panel, Show server log, Quit Q). Click the orb for the full panel; closing the panel takes you back to the orb, it doesn't quit Q. The same page is at http://127.0.0.1:4141 in a browser while Q is running. If you started the server yourself with `npm start`, Q's window uses it and leaves it running when you quit. `bin/Q.app` has to stay where it is: it finds the Q folder from its own location. While the window is running, ⌥Space no longer types a non-breaking space in other apps. If the window isn't built, the launcher opens the browser instead.
 
 After setup, you can turn Wi-Fi off and Q still works.
 
@@ -88,7 +88,7 @@ public/stats.js    p50/p90, cold vs warm, and the run-data export (npm test cove
 public/level.js    loudness check that skips Whisper on near-silent recordings (npm test covers it)
 public/app.js      state machine, streaming, timing
 speech/q-speak.swift  speech helper source (compiled to bin/q-speak, which is not checked in)
-Start Q.command    double-click launcher (checks Ollama, runs npm start, opens Q's window)
+Start Q.command    double-click launcher (opens Q's window; without it, runs npm start and opens the browser)
 shell/             Q's window: Swift source, Info.plist and build script for bin/Q.app
 scripts/setup.sh   one-time install/download
 scripts/bench-cache.mjs  prompt-cache benchmark (timings only)

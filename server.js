@@ -967,3 +967,10 @@ const shutdown = () => { stopping = true; stt.serverProc?.kill(); cmp.proc?.kill
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 process.on('SIGHUP', shutdown); // the Terminal window was closed
+// Started by Q's own window: if that app goes away without stopping us (a
+// crash, a force quit), macOS hands this process to another parent. Stop then,
+// so nothing is left running with no way to reach it.
+if (process.env.Q_EXIT_WITH_PARENT) {
+  const parent = process.ppid;
+  setInterval(() => { if (process.ppid !== parent) shutdown(); }, 2000).unref();
+}

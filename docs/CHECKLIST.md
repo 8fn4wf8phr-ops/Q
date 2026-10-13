@@ -146,7 +146,10 @@ Not started. Q runs only as a page in a browser tab.
   - [x] Step 2, caption: built 2026-10-13; Jacquez reports it works.
   - [x] AirPods as the microphone cut Q's voice: Q now uses the built-in mic by itself when the default is wireless (D-034, built 2026-10-13).
   - [ ] Check D-034 on the real Mac: AirPods in, mic menu on Automatic, Q's voice not cut.
-- [ ] Menu bar item. Basic one exists (show or hide, reload, quit); no status shown in it yet.
+- [x] Menu bar item: Q's state on the first line, open panel or shrink, show or hide, reload, server log, quit.
+- [x] One app, no Terminal window (D-035, built 2026-10-13): Q's window starts and stops the server.
+- [x] Jacquez (2026-10-13): quit from the orb's menu, started again from `Start Q.command`, voice turn worked.
+- [x] Right-click menu on the orb; closing the panel returns to the orb.
 - [ ] Global push-to-talk. Key decided: ⌥Space (D-033). Works in the spike; not yet in a real shell. In the browser, Space still only works while the tab is focused.
 - [ ] Split-Core Q mark (D-017, adopted). Not in the code: `public/index.html` still draws the ring-and-stick mark.
 - [x] Related, already built: `Start Q.command` double-click launcher. It is a convenience, not the wrapper.

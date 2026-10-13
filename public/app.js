@@ -131,6 +131,8 @@ function setPhase(phase, detail) {
   else els.stateDetail.textContent = defaultDetail(phase);
   els.stop.hidden = !['transcribing', 'thinking', 'speaking'].includes(phase);
   captionForPhase(phase, detail);
+  // Q's window shows this line in its menu bar menu.
+  shell?.postMessage(`state:${p.label}${phase === 'offline' || phase === 'error' ? ` — ${els.stateDetail.textContent}` : ''}`);
 }
 
 // Q's own window (bin/Q.app) gives the page a way to talk to it; in a browser there is none.
