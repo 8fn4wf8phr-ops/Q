@@ -90,7 +90,19 @@ else
   todo "swiftc not found (it comes with Xcode or its command line tools). Q will use say instead, which is slower."
 fi
 
+# 9. Q's own window (menu bar item and the ⌥Space talk key; compiled from shell/q-shell.swift)
+if command -v swiftc >/dev/null 2>&1; then
+  todo "Building Q's window…"
+  if npm run --silent build:shell; then
+    ok "Q's window (bin/Q.app)"
+  else
+    fail "Q's window didn't build. Q will open in your browser instead."
+  fi
+else
+  todo "Without swiftc there is no Q window either. Q will open in your browser instead."
+fi
+
 echo
-echo "All set. Start Q with:  npm start"
-echo "Then open http://127.0.0.1:4141 in Safari or Chrome."
+echo "All set. Start Q by double-clicking \"Start Q.command\" in this folder."
+echo "Or run npm start and open http://127.0.0.1:4141 in Safari or Chrome."
 echo

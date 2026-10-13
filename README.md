@@ -21,7 +21,9 @@ npm start
 
 4. Open http://127.0.0.1:4141 and allow the microphone when the browser asks.
 
-After the first run you can start Q by double-clicking **`Start Q.command`** in this folder. It makes sure Ollama is running, starts the server in a Terminal window and opens the page; if Q is already running it just opens the page. Close that window or press Ctrl+C in it to stop Q.
+After the first run you can start Q by double-clicking **`Start Q.command`** in this folder. It makes sure Ollama is running, starts the server in a Terminal window and opens Q in its own window; if Q is already running it just brings Q forward. Close the Terminal window or press Ctrl+C in it to stop Q.
+
+**Q's window** (`bin/Q.app`, built from `shell/` by setup or `npm run build:shell`) floats above other windows and adds a **Q** item to the menu bar. Hold **⌥Space** in any app to talk; inside the window plain Space works too. macOS asks for the microphone once. Quitting the window from the menu bar leaves the server running, and the same page is still at http://127.0.0.1:4141 in a browser. While the window is running, ⌥Space no longer types a non-breaking space in other apps. If the window isn't built, the launcher opens the browser instead.
 
 After setup, you can turn Wi-Fi off and Q still works.
 
@@ -86,7 +88,8 @@ public/stats.js    p50/p90, cold vs warm, and the run-data export (npm test cove
 public/level.js    loudness check that skips Whisper on near-silent recordings (npm test covers it)
 public/app.js      state machine, streaming, timing
 speech/q-speak.swift  speech helper source (compiled to bin/q-speak, which is not checked in)
-Start Q.command    double-click launcher (checks Ollama, runs npm start, opens the page)
+Start Q.command    double-click launcher (checks Ollama, runs npm start, opens Q's window)
+shell/             Q's window: Swift source, Info.plist and build script for bin/Q.app
 scripts/setup.sh   one-time install/download
 scripts/bench-cache.mjs  prompt-cache benchmark (timings only)
 scripts/quality-run.mjs  runs the quality-test prompts through Q and saves the replies

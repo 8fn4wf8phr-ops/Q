@@ -1,8 +1,10 @@
 #!/bin/bash
 # Start Q — double-click this file to launch Q.
 # It makes sure Ollama is running, starts the Q server in this window and
-# opens Q in your browser. If Q is already running it only opens the page.
-# To stop Q: press Ctrl+C here, or close this window.
+# opens Q in its own window (or in your browser if that window isn't built).
+# If Q is already running it only brings Q forward.
+# To stop Q: press Ctrl+C here, or close this window. Quitting Q's window from
+# the menu bar only closes the window; the server keeps running here.
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 PORT="${Q_PORT:-4141}"
@@ -30,6 +32,8 @@ give_up() {
 # Q's own status page, not just anything answering on the port.
 q_is_up() { curl -s -m 2 "$URL/api/status" 2>/dev/null | grep -q '"warmup"'; }
 ollama_is_up() { curl -s -m 2 "$OLLAMA_URL/api/version" >/dev/null 2>&1; }
+# Q's own window if setup built it; the page is always there in a browser too.
+open_q() { if [ -d bin/Q.app ]; then open bin/Q.app --args "$URL"; else open "$URL"; fi; }
 
 echo
 echo "  Starting Q"
@@ -37,8 +41,8 @@ echo
 
 # 1. Already running? Just open the page.
 if q_is_up; then
-  say_ok "Q is already running. Opening $URL"
-  open "$URL"
+  say_ok "Q is already running. Bringing it forward."
+  open_q
   exit 0
 fi
 if lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
@@ -66,7 +70,7 @@ fi
 # 4. Open the page as soon as the server answers (gives up after a minute).
 (
   for _ in $(seq 1 120); do
-    if q_is_up; then open "$URL"; exit 0; fi
+    if q_is_up; then open_q; exit 0; fi
     sleep 0.5
   done
 ) &

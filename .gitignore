@@ -4,4 +4,3 @@ bin/
 q.config.json
 .DS_Store
 quality/out/
-spike/build/
