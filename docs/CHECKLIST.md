@@ -134,10 +134,11 @@ Nothing here is finished. Some of it was started early while fixing v0.1.
 
 Not started. Q runs only as a page in a browser tab.
 
-- [ ] Choose the native wrapper: Swift + WKWebView vs Tauri vs Electron (D-010, open). This comes first.
+- [x] Native wrapper chosen: Swift + WKWebView (D-032, 2026-10-13), for now and without a Tauri measurement.
   - [x] Swift shell spike built and probed (2026-10-13): mic works, ⌥Space registers, about 207 MB idle.
-  - [ ] A real voice turn inside the Swift shell.
-  - [ ] Decide whether the Tauri comparison is still wanted.
+  - [x] A real voice turn inside the Swift shell (Jacquez 2026-10-13, Space with the window focused).
+  - [x] Voice turns from the global ⌥Space key with another app in front (Jacquez 2026-10-13, two turns, both in the shell's log).
+  - [x] Tauri comparison not run: Jacquez chose to stay with Swift for now (2026-10-13). Nothing was downloaded.
 - [ ] Floating Q Core window. No code.
 - [ ] Menu bar item. No code.
 - [ ] Global push-to-talk. No code; the key is undecided, and today Space only works while the tab is focused.
