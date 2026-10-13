@@ -42,8 +42,10 @@ export class QCore {
     }));
     this.last = 0;
     this.running = false;
+    this.pauseWhenIdle = false; // compact mode: stop redrawing once the idle orb has settled
+    this.quietFor = 0;
     this.resize();
-    new ResizeObserver(() => { this.resize(); if (this.reducedMotion) this.draw(); }).observe(canvas);
+    new ResizeObserver(() => { this.resize(); if (this.reducedMotion || !this.running) this.draw(); }).observe(canvas);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) this.kick(); });
   }
 
@@ -60,6 +62,7 @@ export class QCore {
   setState(name) {
     if (!STATES[name]) name = 'idle';
     this.stateName = name;
+    this.quietFor = 0;
     if (this.reducedMotion) {
       const s = STATES[name];
       this.cur = { ...s, a: [...s.a], b: [...s.b], c: [...s.c] };
@@ -87,6 +90,15 @@ export class QCore {
     const quiet = this.stateName === 'idle' || this.stateName === 'offline';
     const minGap = quiet && this.assemble >= 1 ? 1000 / 30 - 1 : 0; // ~30fps when idle
     const elapsed = now - this.last;
+    this.quietFor = quiet ? this.quietFor + Math.max(0, now - (this.prevFrame ?? now)) : 0;
+    this.prevFrame = now;
+    // Two seconds is enough for the colours to finish easing into the idle look.
+    if (this.pauseWhenIdle && this.assemble >= 1 && this.quietFor > 2000) {
+      this.draw();
+      this.running = false;
+      this.prevFrame = null;
+      return;
+    }
     if (elapsed >= minGap) {
       const dt = Math.min(elapsed / 1000, 0.1);
       this.last = now;

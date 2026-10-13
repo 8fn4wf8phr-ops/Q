@@ -312,3 +312,12 @@ select {
 @media (prefers-contrast: more) {
   :root { --line: rgba(160, 220, 255, 0.45); --text-2: #c8d6ea; --text-3: #9fb2cc; }
 }
+
+/* ---------- compact: only the orb, inside Q's own window ---------- */
+html.compact, html.compact body { background: transparent; }
+html.compact .backdrop, html.compact .top, html.compact .convo, html.compact .side,
+html.compact .state, html.compact .stop { display: none !important; }
+html.compact .layout { display: block; padding: 0; }
+/* The orb glows by adding light, so it needs something dark behind it whatever is on screen. */
+html.compact .stage { height: 100%; background: radial-gradient(circle closest-side, rgba(5, 9, 20, 0.94) 0 78%, rgba(5, 9, 20, 0) 100%); }
+html.compact .stage canvas { cursor: pointer; }

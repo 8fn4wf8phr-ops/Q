@@ -10,6 +10,7 @@ const NEEDS_API = 5;
 const $ = (sel) => document.querySelector(sel);
 const els = {
   canvas: $('#core'),
+  shrink: $('#shrink'),
   stage: $('#stage'),
   stateText: $('#stateText'),
   stateDetail: $('#stateDetail'),
@@ -831,7 +832,31 @@ els.mic.addEventListener('pointercancel', () => pttUp());
 els.mic.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); } });
 
 els.stop.addEventListener('click', () => interrupt());
-els.canvas.addEventListener('click', () => { if (['thinking', 'speaking', 'transcribing'].includes(S.phase)) interrupt(); });
+// A click on the orb interrupts Q if it is busy; in compact mode an idle click opens the panel.
+function orbClick() {
+  if (['thinking', 'speaking', 'transcribing'].includes(S.phase)) interrupt();
+  else if (compact) shell?.postMessage('expand');
+}
+els.canvas.addEventListener('click', orbClick);
+
+// ---------- Q's own window ----------
+// Inside bin/Q.app the page can be shown compact (just the orb) or in full.
+// The window decides which and tells the page; the page asks to switch.
+const shell = window.webkit?.messageHandlers?.q ?? null;
+let compact = false;
+function setCompact(on) {
+  compact = !!on;
+  document.documentElement.classList.toggle('compact', compact);
+  core.pauseWhenIdle = compact;
+  core.kick();
+}
+window.qSetCompact = setCompact;
+window.qOrbClick = orbClick; // the window handles the mouse itself in compact mode, so it can be dragged
+if (shell) {
+  els.shrink.hidden = false;
+  els.shrink.addEventListener('click', () => shell.postMessage('shrink'));
+  setCompact(document.documentElement.classList.contains('compact'));
+}
 
 els.form.addEventListener('submit', (e) => {
   e.preventDefault();

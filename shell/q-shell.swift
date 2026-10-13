@@ -1,6 +1,8 @@
 // Q's native shell: Q's page in its own window, a menu bar item, and a global
 // push-to-talk key (⌥Space, D-033) that works from any app.
-// The page and the server are unchanged; this only hosts them (D-032).
+// The window has two shapes: compact (a small frameless orb that floats in a
+// corner) and full (the whole page). It is one page either way, so the
+// conversation carries over. The server is unchanged (D-032).
 //
 // Built by `npm run build:shell` into bin/Q.app and started by the launcher
 // through `open`, so macOS attributes the microphone request to this app.
@@ -25,33 +27,80 @@ func log(_ what: String) {
   logFile.write(String(format: "%7.0f ms  %@\n", Date().timeIntervalSince(launched) * 1000, what).data(using: .utf8)!)
 }
 
-final class Shell: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate {
-  var window: NSWindow!
-  var web: WKWebView!
+let compactSize = NSSize(width: 120, height: 120)
+let fullSize = NSSize(width: 440, height: 680)
+let cornerMargin: CGFloat = 16
+
+// A frameless window can't take the keyboard unless it says it can.
+final class QWindow: NSWindow {
+  override var canBecomeKey: Bool { true }
+  override var canBecomeMain: Bool { true }
+}
+
+// A web view takes every mouse event, so a frameless window around one can't
+// be dragged. In compact mode the mouse is handled here instead: a press that
+// moves drags the window, a press that doesn't is a click on the orb.
+final class QWebView: WKWebView {
+  var compact = false
+  var onClick: (() -> Void)?
+  var onMoved: (() -> Void)?
+  private var grab: NSPoint?
+  private var moved = false
+
+  override func mouseDown(with event: NSEvent) {
+    guard compact else { return super.mouseDown(with: event) }
+    grab = event.locationInWindow
+    moved = false
+  }
+
+  override func mouseDragged(with event: NSEvent) {
+    guard compact, let grab, let window else { return super.mouseDragged(with: event) }
+    let now = NSEvent.mouseLocation
+    let origin = NSPoint(x: now.x - grab.x, y: now.y - grab.y)
+    if !moved && hypot(origin.x - window.frame.origin.x, origin.y - window.frame.origin.y) < 4 { return }
+    moved = true
+    window.setFrameOrigin(origin)
+  }
+
+  override func mouseUp(with event: NSEvent) {
+    guard compact else { return super.mouseUp(with: event) }
+    if moved { onMoved?() } else if grab != nil { onClick?() }
+    grab = nil
+  }
+}
+
+final class Shell: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
+  var window: QWindow!
+  var web: QWebView!
   var item: NSStatusItem!
+  var modeItem: NSMenuItem!
+  var compact = true
+  let saved = UserDefaults.standard
 
   func applicationDidFinishLaunching(_ note: Notification) {
     let config = WKWebViewConfiguration()
     config.mediaTypesRequiringUserActionForPlayback = [] // Q speaks without a click in this window
-    web = WKWebView(frame: .zero, configuration: config)
+    config.userContentController.add(self, name: "q") // the page asks to expand or shrink
+    // Start in the right shape before anything is drawn, so the full page never flashes.
+    config.userContentController.addUserScript(WKUserScript(source: "document.documentElement.classList.add('compact')", injectionTime: .atDocumentStart, forMainFrameOnly: true))
+    web = QWebView(frame: .zero, configuration: config)
     web.navigationDelegate = self
     web.uiDelegate = self
+    web.setValue(false, forKey: "drawsBackground") // see-through around the orb
+    web.onClick = { [weak self] in self?.web.evaluateJavaScript("window.qOrbClick && window.qOrbClick()") }
+    web.onMoved = { [weak self] in self?.rememberFrame() }
 
-    window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 440, height: 680),
-                      styleMask: [.titled, .closable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
+    window = QWindow(contentRect: NSRect(origin: .zero, size: compactSize), styleMask: [.borderless], backing: .buffered, defer: false)
     window.title = "Q"
-    window.titlebarAppearsTransparent = true
-    window.titleVisibility = .hidden
     window.level = .floating
     window.isReleasedWhenClosed = false // closing hides it; the menu bar item brings it back
     window.contentView = web
-    window.center()
-    window.setFrameAutosaveName("Q")
-    show()
 
     item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     item.button?.title = "Q"
     let menu = NSMenu()
+    modeItem = menu.addItem(withTitle: "", action: #selector(switchMode), keyEquivalent: "")
+    modeItem.target = self
     menu.addItem(withTitle: "Show or hide Q", action: #selector(toggle), keyEquivalent: "").target = self
     menu.addItem(withTitle: "Reload", action: #selector(reload), keyEquivalent: "").target = self
     menu.addItem(.separator())
@@ -59,9 +108,66 @@ final class Shell: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDe
     item.menu = menu
 
     NSApp.mainMenu = mainMenu()
+    apply(compact: true, activate: false)
     registerHotKey()
     log("window up, loading \(pageURL.absoluteString)")
     web.load(URLRequest(url: pageURL))
+  }
+
+  // ---------- compact and full ----------
+
+  func apply(compact on: Bool, activate: Bool = true) {
+    compact = on
+    web.compact = on
+    let screen = (window.screen ?? NSScreen.main)?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
+    var frame: NSRect
+    if on {
+      window.styleMask = [.borderless]
+      window.isOpaque = false
+      window.backgroundColor = .clear
+      window.hasShadow = false
+      window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary] // the orb follows you between Spaces
+      // Top right unless it has been dragged somewhere else.
+      let origin = saved.string(forKey: "compactOrigin").map(NSPointFromString)
+        ?? NSPoint(x: screen.maxX - compactSize.width - cornerMargin, y: screen.maxY - compactSize.height - cornerMargin)
+      frame = NSRect(origin: origin, size: compactSize)
+    } else {
+      window.styleMask = [.titled, .closable, .resizable, .fullSizeContentView]
+      window.titlebarAppearsTransparent = true
+      window.titleVisibility = .hidden
+      window.isOpaque = true
+      window.backgroundColor = NSColor(red: 0.02, green: 0.03, blue: 0.07, alpha: 1)
+      window.hasShadow = true
+      window.collectionBehavior = []
+      // Open from the orb's corner, at the size it was last left.
+      let size = saved.string(forKey: "fullSize").map(NSSizeFromString) ?? fullSize
+      let orb = window.frame
+      frame = NSRect(x: orb.maxX - size.width, y: orb.maxY - size.height, width: size.width, height: size.height)
+    }
+    // Never leave it off the edge of the screen (a display may have been unplugged).
+    frame.origin.x = min(max(frame.origin.x, screen.minX), screen.maxX - frame.width)
+    frame.origin.y = min(max(frame.origin.y, screen.minY), screen.maxY - frame.height)
+    window.setFrame(frame, display: true)
+    web.evaluateJavaScript("window.qSetCompact && window.qSetCompact(\(on))")
+    modeItem.title = on ? "Open panel" : "Shrink to orb"
+    if on { window.orderFrontRegardless() } else if activate { show() } else { window.orderFrontRegardless() }
+    log(on ? "compact" : "full")
+  }
+
+  func rememberFrame() {
+    if compact { saved.set(NSStringFromPoint(window.frame.origin), forKey: "compactOrigin") }
+    else { saved.set(NSStringFromSize(window.frame.size), forKey: "fullSize") }
+  }
+
+  @objc func switchMode() {
+    if !compact { rememberFrame() }
+    apply(compact: !compact)
+  }
+
+  func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+    guard let what = message.body as? String else { return }
+    if what == "expand" && compact { apply(compact: false) }
+    if what == "shrink" && !compact { rememberFrame(); apply(compact: true) }
   }
 
   // No Dock icon means no visible menu bar of its own, but the key
@@ -89,13 +195,21 @@ final class Shell: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDe
     NSApp.activate(ignoringOtherApps: true)
   }
 
-  @objc func toggle() { if window.isVisible { window.orderOut(nil) } else { show() } }
+  @objc func toggle() { if window.isVisible { window.orderOut(nil) } else if compact { window.orderFrontRegardless() } else { show() } }
   @objc func reload() { web.load(URLRequest(url: pageURL)) }
 
   // Started again while already running (the launcher does this): just come forward.
-  func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { show(); return false }
+  func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+    if compact { window.orderFrontRegardless() } else { show() }
+    return false
+  }
 
-  func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { log("page loaded") }
+  func applicationWillTerminate(_ note: Notification) { if !compact { rememberFrame() } }
+
+  func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+    log("page loaded")
+    web.evaluateJavaScript("window.qSetCompact && window.qSetCompact(\(compact))")
+  }
 
   // The server isn't answering (not started yet, or restarting): keep trying.
   func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
