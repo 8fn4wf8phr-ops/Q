@@ -144,7 +144,8 @@ Not started. Q runs only as a page in a browser tab.
 - [x] Floating Q Core window: orb with a caption, top right (option B, chosen by Jacquez 2026-10-13).
   - [x] Step 1, orb only: built 2026-10-13 and used by voice by Jacquez.
   - [x] Step 2, caption: built 2026-10-13; Jacquez reports it works.
-  - [ ] AirPods as the microphone cut Q's voice; pinning the MacBook mic fixes it. Decide whether Q should warn or pin by default.
+  - [x] AirPods as the microphone cut Q's voice: Q now uses the built-in mic by itself when the default is wireless (D-034, built 2026-10-13).
+  - [ ] Check D-034 on the real Mac: AirPods in, mic menu on Automatic, Q's voice not cut.
 - [ ] Menu bar item. Basic one exists (show or hide, reload, quit); no status shown in it yet.
 - [ ] Global push-to-talk. Key decided: ⌥Space (D-033). Works in the spike; not yet in a real shell. In the browser, Space still only works while the tab is focused.
 - [ ] Split-Core Q mark (D-017, adopted). Not in the code: `public/index.html` still draws the ring-and-stick mark.

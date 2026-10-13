@@ -1,5 +1,6 @@
 import { QCore } from './core.js';
 import { Recorder, Player, BrowserSpeaker, blobToWav16k, micName } from './audio.js';
+import { autoMic, WIRELESS } from './micpick.js';
 import { takeChunks } from './chunk.js';
 import { SCHEMA, MAX_RUNS, MIN_FOR_P90, IDLE_MS, kindOf, sameWords, summarize, buildExport } from './stats.js';
 
@@ -226,16 +227,19 @@ function offlineReason() {
 // switch it without asking (an iPhone nearby becomes a Continuity microphone),
 // so Q shows the device it actually opened and says when that changes.
 
-const mic = { name: null, source: null, changed: false };
-const WIRELESS = /iphone|ipad|airpods|bluetooth|hands-free|headset/i;
+// auto: set while Q is using the built-in mic because the system default is a
+// wireless one ({ deviceId, name, avoided }); see micpick.js.
+const mic = { name: null, source: null, changed: false, auto: null, toldAbout: null };
 
 // source: 'recording' (the device a recording really used), 'default' (the
-// system default) or 'chosen' (picked in the Voice panel, not yet used).
+// system default), 'chosen' (picked in the Voice panel, not yet used) or
+// 'auto' (Q's own pick over a wireless default).
+const micWanted = () => S.micId || mic.auto?.deviceId || undefined;
 function setMic(name, source) {
   if (!name) return;
   if (mic.name && name !== mic.name) {
     // A switch you made yourself needs no warning; one you didn't make does.
-    if (source !== 'chosen') {
+    if (source !== 'chosen' && source !== 'auto') {
       mic.changed = true;
       systemNote(source === 'recording' ? `Microphone changed: ${mic.name} → ${name}` : `The default microphone is now ${name} (was ${mic.name})`, 'err');
     }
@@ -261,7 +265,9 @@ async function checkDefaultMic(e) {
   // 'default' and 'communications' are aliases for devices that are also listed by themselves.
   const real = inputs.filter((d) => d.label && d.deviceId !== 'default' && d.deviceId !== 'communications');
   const chosen = real.find((d) => d.deviceId === S.micId);
-  const options = [`<option value="">System default${defaultName ? ` (now ${escapeHtml(defaultName)})` : ''}</option>`]
+  const pick = autoMic(inputs); // worked out even when you have chosen, so the menu says what Automatic would use
+  mic.auto = S.micId || !pick ? null : { deviceId: pick.deviceId, name: micName(pick.label), avoided: micName(pick.avoided) };
+  const options = [`<option value="">Automatic${pick ? ` (now ${escapeHtml(micName(pick.label))})` : defaultName ? ` (now ${escapeHtml(defaultName)})` : ''}</option>`]
     .concat(real.map((d) => `<option value="${escapeAttr(d.deviceId)}">${escapeHtml(micName(d.label))}</option>`));
   if (S.micId && !chosen) options.push(`<option value="${escapeAttr(S.micId)}">${escapeHtml(S.micLabel || 'Chosen microphone')} (not connected)</option>`);
   els.micSelect.innerHTML = options.join('');
@@ -270,17 +276,25 @@ async function checkDefaultMic(e) {
   els.micNote.textContent = !real.length ? 'The browser lists microphones by name after the first recording.'
     : S.micId && !chosen ? 'Your chosen microphone isn’t connected. Q won’t record until it is back or you pick another.'
     : S.micId ? 'Q records from this microphone only, whatever the system default is.'
-    : 'Q follows the system default, which macOS can switch (for example to a nearby iPhone).';
+    : mic.auto ? `The system default is ${mic.auto.avoided}. A wireless mic cuts Q’s voice, so Q is using ${mic.auto.name}. Pick ${mic.auto.avoided} here if you want it anyway.`
+    : 'Q follows the system default, except that it uses the built-in mic when the default is a wireless one (AirPods, a nearby iPhone).';
   if (S.micId) { if (chosen) setMic(micName(chosen.label), 'chosen'); }
-  else setMic(defaultName, 'default');
+  else if (mic.auto) {
+    // Say it once per device, not on every device-list change.
+    if (mic.toldAbout !== mic.auto.avoided) {
+      mic.toldAbout = mic.auto.avoided;
+      systemNote(`The default microphone is ${mic.auto.avoided}, which would cut Q’s voice, so Q is listening through ${mic.auto.name}. You can change this under Voice.`);
+    }
+    setMic(mic.auto.name, 'auto');
+  } else setMic(defaultName, 'default');
 }
 
 function micRow() {
   if (!mic.name) return row('Mic', 'not known yet', { kind: 'idle', text: 'Unknown' }, 'the browser shows its name after the first recording');
-  const note = WIRELESS.test(mic.name) ? ' · phone or wireless mic: often slower to start and lower quality' : '';
-  const how = S.micId ? 'your choice' : 'system default';
+  const note = WIRELESS.test(mic.name) ? ' · phone or wireless mic: Q’s voice can cut out mid-sentence' : '';
+  const how = S.micId ? 'your choice' : mic.auto ? `chosen by Q because the default (${mic.auto.avoided}) is wireless` : 'system default';
   const sub = (mic.source === 'recording' ? `used for your last recording · ${how}` : `${how} · used on the next press`) + (recorder.held ? ' · kept open for your next press' : '') + (mic.changed ? ' · changed this session' : '') + note;
-  const badge = note ? { kind: 'warn', text: 'Check' } : mic.source === 'recording' ? { kind: 'ok', text: 'In use' } : { kind: 'idle', text: S.micId ? 'Chosen' : 'Default' };
+  const badge = note ? { kind: 'warn', text: 'Check' } : mic.source === 'recording' ? { kind: 'ok', text: 'In use' } : { kind: 'idle', text: S.micId ? 'Chosen' : mic.auto ? 'Auto' : 'Default' };
   return row('Mic', escapeHtml(mic.name), badge, sub);
 }
 
@@ -698,7 +712,7 @@ async function pttDown() {
   els.mic.classList.add('held');
   setPhase('arming');
   const pressed = performance.now();
-  S.arming = recorder.start(S.micId || undefined)
+  S.arming = recorder.start(micWanted())
     .then(() => {
       S.armMs = performance.now() - pressed; // key down → actually recording
       const firstNames = !els.micSelect.options.length || els.micSelect.options.length === 1;
@@ -712,7 +726,7 @@ async function pttDown() {
       // No quiet fallback to another microphone: that is the problem the menu exists to prevent.
       const missing = S.micId && ['OverconstrainedError', 'NotFoundError'].includes(err.name);
       fail(missing ? `Your chosen microphone (${S.micLabel || 'unknown'}) isn’t connected. Reconnect it or pick another under Voice.` : `Microphone unavailable: ${err.message}`);
-      if (missing) checkDefaultMic();
+      if (missing || mic.auto) checkDefaultMic();
       throw err;
     });
   S.arming.catch(() => {}); // pttUp reads the failure; this only stops an "unhandled" console error
