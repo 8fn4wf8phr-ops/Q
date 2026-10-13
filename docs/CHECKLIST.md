@@ -117,6 +117,8 @@ Nothing here is finished. Some of it was started early while fixing v0.1.
 - [x] Mic hold checked on the real microphone (2026-10-12): 16 follow-up presses recorded after a median 0.06 s.
 - [x] Jacquez (2026-10-12): no first words lost in the session with the mic hold. The "already speaking" flag on 8 of 16 kept-open presses is therefore not a sign of lost speech.
 - [ ] Still open: the first press after a pause of more than 60 s pays the full 0.66 s.
+- [x] "Mic opened in" was under-reported in Q's window (WebKit says the mic is open before sound flows). Fixed 2026-10-13: the clock now stops when sound arrives.
+- [ ] Confirm in Q's window: fresh presses should now read a few tenths of a second, held ones a few hundredths.
 - [x] Keep Q warm from startup, not only after the first turn (built 2026-10-12, D-031; first turn 6.4 minutes after a restart had taken 7.8 s).
 - [x] Seen in real use (2026-10-12): first turn after a restart, three pings before it, 1.31 s.
 - [x] A turn is labelled cold only when the model load took over 1 s (was 0.3 s, which mislabelled a slow warm turn).

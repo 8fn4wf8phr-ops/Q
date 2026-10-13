@@ -174,7 +174,8 @@ function fadeCaption(after = CAPTION_LINGER_MS) {
 }
 
 function captionForPhase(phase, detail) {
-  if (phase === 'arming' || phase === 'listening') showCaption({ heard: '', said: '', note: 'Listening…' });
+  if (phase === 'arming') showCaption({ heard: '', said: '', note: 'Opening mic…' });
+  else if (phase === 'listening') showCaption({ heard: '', said: '', note: 'Listening…' });
   else if (phase === 'transcribing') showCaption({ note: 'Transcribing…' });
   else if (phase === 'thinking') showCaption({ note: cap.said ? '' : 'Thinking…' });
   else if (phase === 'speaking') showCaption({ note: '' });
@@ -193,7 +194,7 @@ function defaultDetail(phase) {
   switch (phase) {
     case 'warming': return `Loading ${S.status?.model ?? 'the model'} into memory — the first reply will be slow`;
     case 'idle': return 'Hold Space or the mic to talk';
-    case 'arming': return 'Waiting for microphone access';
+    case 'arming': return 'Opening the microphone…';
     case 'listening': return 'Release to send';
     case 'transcribing': return `whisper.cpp · ${S.status?.stt?.model ?? ''}`;
     case 'thinking': return S.status?.model ? `${S.status.model} generating locally` : '';
@@ -714,14 +715,20 @@ async function pttDown() {
   unlockSpeech();
   els.mic.classList.add('held');
   setPhase('arming');
+  S.armMs = null;
   const pressed = performance.now();
   S.arming = recorder.start(micWanted())
     .then(() => {
-      S.armMs = performance.now() - pressed; // key down → actually recording
+      // Key down → sound actually arriving, which can be well after the recorder says it has started.
+      const flowing = recorder.flowing;
+      flowing.then((hearing) => {
+        if (recorder.flowing !== flowing) return; // a later press has taken over
+        S.armMs = hearing ? performance.now() - pressed : null;
+        if (S.ptt) setPhase('listening');
+      });
       const firstNames = !els.micSelect.options.length || els.micSelect.options.length === 1;
       setMic(recorder.deviceName, 'recording');
       if (firstNames) checkDefaultMic(); // device names are available from now on
-      if (S.ptt) setPhase('listening');
     })
     .catch((err) => {
       S.ptt = false;
@@ -789,7 +796,7 @@ async function pttUp() {
 // ---------- latency panel ----------
 
 const fmtS = (ms) => (ms == null ? '—' : `${(ms / 1000).toFixed(2)} s`);
-const fmtDb = (db) => (Number.isFinite(db) ? `${db.toFixed(0)} dB` : 'silence');
+const fmtDb = (db) => (Number.isFinite(db) && db > -120 ? `${db.toFixed(0)} dB` : 'silence');
 // Cold = the model was loaded for this turn, or the turn waited on the startup warm-up.
 // A loaded model reports a load time of a few tens of ms, up to about 0.4 s on
 // a Mac short of memory; a real load takes seconds.

@@ -55,8 +55,29 @@ export class Recorder {
     await started;
     this.startedAt = performance.now();
     this.active = true;
+    this.flowing = this.whenFlowing();
     // The device the browser actually opened, which is not always the one you expect.
     this.deviceName = micName(this.stream.getAudioTracks()[0]?.label);
+  }
+
+  // "Started" is not the same as "hearing". Some browsers (WebKit, so Q's own
+  // window) hand over the microphone and start the recorder up to a second
+  // before any sound arrives. This resolves true once real samples are coming
+  // in, or false if the recording ends or two seconds pass first. A microphone
+  // kept open from the last turn is already flowing, so it resolves at once.
+  whenFlowing(limitMs = 2000) {
+    const stream = this.stream;
+    const t0 = performance.now();
+    return new Promise((resolve) => {
+      const check = () => {
+        if (!this.active || this.stream !== stream || !this.analyser) return resolve(false);
+        this.analyser.getFloatTimeDomainData(this.buf);
+        if (this.buf.some((v) => v !== 0)) return resolve(true);
+        if (performance.now() - t0 > limitMs) return resolve(false);
+        setTimeout(check, 8);
+      };
+      check();
+    });
   }
 
   getLevel = () => (this.active && this.analyser ? Math.min(1, rms(this.analyser, this.buf) * 5) : 0);
