@@ -11,6 +11,9 @@ const $ = (sel) => document.querySelector(sel);
 const els = {
   canvas: $('#core'),
   shrink: $('#shrink'),
+  caption: $('#caption'),
+  capHeard: $('#capHeard'),
+  capSaid: $('#capSaid'),
   stage: $('#stage'),
   stateText: $('#stateText'),
   stateDetail: $('#stateDetail'),
@@ -62,9 +65,10 @@ const MIC_HOLD_MS = 60_000;
 // Two ways to speak, same callbacks: `player` plays WAVs the server made with
 // `say`; `speaker` uses the browser's own speech engine (local voices only).
 const speechEvents = {
-  onStart: () => {
+  onStart: (text) => {
     if (turn && turn.tFirstAudio == null) { turn.tFirstAudio = performance.now(); renderLatency(); sampleSystem(turn); }
     setPhase('speaking');
+    if (text) showCaption({ said: text });
   },
   onIdle: () => {
     if (turn && !turn.streamDone) setPhase('thinking');
@@ -125,6 +129,60 @@ function setPhase(phase, detail) {
   if (detail !== undefined) els.stateDetail.textContent = detail;
   else els.stateDetail.textContent = defaultDetail(phase);
   els.stop.hidden = !['transcribing', 'thinking', 'speaking'].includes(phase);
+  captionForPhase(phase, detail);
+}
+
+// Q's own window (bin/Q.app) gives the page a way to talk to it; in a browser there is none.
+const shell = window.webkit?.messageHandlers?.q ?? null;
+let compact = false; // showing only the orb and caption
+
+// ---------- caption ----------
+// In compact mode there is no conversation on screen, so a line or two beside
+// the orb shows what Q heard and the piece it is saying. It appears with a
+// turn and fades a few seconds after Q goes quiet.
+const cap = { heard: '', said: '', note: '', visible: false, timer: null };
+const CAPTION_LINGER_MS = 4000;
+
+function showCaption(part) {
+  Object.assign(cap, part);
+  els.capHeard.textContent = cap.heard ? `“${cap.heard}”` : cap.note;
+  els.capSaid.textContent = cap.said || (cap.heard ? cap.note : '');
+  clearTimeout(cap.timer);
+  if (!cap.visible) {
+    cap.visible = true;
+    if (compact) shell?.postMessage('caption-on'); // the window widens first, then the text appears in it
+  }
+  els.caption.hidden = false;
+  els.caption.classList.remove('gone');
+}
+
+function fadeCaption(after = CAPTION_LINGER_MS) {
+  if (!cap.visible) return;
+  clearTimeout(cap.timer);
+  cap.timer = setTimeout(() => {
+    els.caption.classList.add('gone');
+    cap.timer = setTimeout(() => {
+      cap.visible = false;
+      els.caption.hidden = true;
+      if (compact) shell?.postMessage('caption-off');
+    }, 260);
+  }, after);
+}
+
+function captionForPhase(phase, detail) {
+  if (phase === 'arming' || phase === 'listening') showCaption({ heard: '', said: '', note: 'Listening…' });
+  else if (phase === 'transcribing') showCaption({ note: 'Transcribing…' });
+  else if (phase === 'thinking') showCaption({ note: cap.said ? '' : 'Thinking…' });
+  else if (phase === 'speaking') showCaption({ note: '' });
+  else if (phase === 'error') { showCaption({ note: detail || 'Something went wrong', said: '' }); fadeCaption(7000); }
+  else if (phase === 'idle' || phase === 'offline' || phase === 'warming') { if (cap.note.endsWith('…')) cap.note = ''; fadeCaption(); }
+}
+
+// A short remark after a turn that went nowhere ("Didn’t catch that"), shown under the orb and in the caption.
+function quietNote(text) {
+  els.stateDetail.textContent = text;
+  showCaption({ heard: '', said: '', note: text });
+  fadeCaption();
 }
 
 function defaultDetail(phase) {
@@ -423,7 +481,7 @@ function showComparison(t, bubbleEl, mainText, alt) {
 let synthChain = Promise.resolve();
 
 function speakSentence(text) {
-  if (!S.speak || !canSpeak()) return;
+  if (!S.speak || !canSpeak()) { showCaption({ said: text }); return; } // not spoken aloud: the caption still follows the reply
   const t = turn;
   if (t && t.tFirstSentence == null) t.tFirstSentence = performance.now();
   if (S.engine === 'browser') { speaker.enqueue(text); return; }
@@ -444,7 +502,7 @@ function speakSentence(text) {
     return r.arrayBuffer();
   });
   synthChain = p.then(() => {}, () => {});
-  player.enqueue(p);
+  player.enqueue(p, text);
 }
 
 // ---------- a turn ----------
@@ -476,6 +534,7 @@ async function runTurn(text) {
   const t = turn;
   S.messages.push({ role: 'user', content: text, at: Date.now() });
   t.userPushed = true;
+  showCaption({ heard: text, said: '', note: '' });
   const mine = addBubble('user', text, t.source === 'voice' ? `heard · ${(t.sttMs / 1000).toFixed(2)} s` : '');
   if (t.alt) t.alt.then((a) => showComparison(t, mine, text, a));
   const bubble = addBubble('q');
@@ -670,7 +729,7 @@ async function pttUp() {
   const result = await recorder.stop();
   renderStatus();
   if (!result) return settle();
-  if (result.durationMs < 300) { settle(); els.stateDetail.textContent = 'Too short — hold while you talk'; return; }
+  if (result.durationMs < 300) { settle(); quietNote('Too short — hold while you talk'); return; }
   const t = newTurn('voice', released);
   turn = t;
   t.mic = recorder.deviceName;
@@ -686,7 +745,7 @@ async function pttUp() {
       // Near-silent clip: Whisper would invent words, so it isn't asked.
       turn = null;
       settle();
-      els.stateDetail.textContent = `Didn’t hear anything (loudest ${fmtDb(level.peakDb)}) — try again`;
+      quietNote(`Didn’t hear anything (loudest ${fmtDb(level.peakDb)}) — try again`);
       return;
     }
     const tSent = performance.now();
@@ -702,7 +761,7 @@ async function pttUp() {
     turn.sttMs = turn.tStt - turn.t0;
     turn.sttEngineMs = data.ms;
     turn.encodeMs = tSent - turn.t0;
-    if (!data.text) { turn = null; settle(); els.stateDetail.textContent = 'Didn’t catch that — try again'; return; }
+    if (!data.text) { turn = null; settle(); quietNote('Didn’t catch that — try again'); return; }
     renderLatency();
     await runTurn(data.text);
   } catch (err) {
@@ -842,13 +901,12 @@ els.canvas.addEventListener('click', orbClick);
 // ---------- Q's own window ----------
 // Inside bin/Q.app the page can be shown compact (just the orb) or in full.
 // The window decides which and tells the page; the page asks to switch.
-const shell = window.webkit?.messageHandlers?.q ?? null;
-let compact = false;
 function setCompact(on) {
   compact = !!on;
   document.documentElement.classList.toggle('compact', compact);
   core.pauseWhenIdle = compact;
   core.kick();
+  if (compact && cap.visible) shell?.postMessage('caption-on');
 }
 window.qSetCompact = setCompact;
 window.qOrbClick = orbClick; // the window handles the mouse itself in compact mode, so it can be dragged

@@ -28,6 +28,7 @@ func log(_ what: String) {
 }
 
 let compactSize = NSSize(width: 120, height: 120)
+let captionWidth: CGFloat = 300 // added beside the orb while a caption is showing
 let fullSize = NSSize(width: 440, height: 680)
 let cornerMargin: CGFloat = 16
 
@@ -75,7 +76,16 @@ final class Shell: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDe
   var item: NSStatusItem!
   var modeItem: NSMenuItem!
   var compact = true
+  var captionOn = false
+  var captionLeft = true // which side of the orb the caption opens on
   let saved = UserDefaults.standard
+
+  // Where the orb itself is, whether or not the window is widened for a caption.
+  var orbFrame: NSRect {
+    let f = window.frame
+    guard compact && captionOn else { return f }
+    return NSRect(x: captionLeft ? f.maxX - compactSize.width : f.minX, y: f.minY, width: compactSize.width, height: compactSize.height)
+  }
 
   func applicationDidFinishLaunching(_ note: Notification) {
     let config = WKWebViewConfiguration()
@@ -117,7 +127,9 @@ final class Shell: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDe
   // ---------- compact and full ----------
 
   func apply(compact on: Bool, activate: Bool = true) {
+    let orb = orbFrame
     compact = on
+    captionOn = false
     web.compact = on
     let screen = (window.screen ?? NSScreen.main)?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
     var frame: NSRect
@@ -141,7 +153,6 @@ final class Shell: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDe
       window.collectionBehavior = []
       // Open from the orb's corner, at the size it was last left.
       let size = saved.string(forKey: "fullSize").map(NSSizeFromString) ?? fullSize
-      let orb = window.frame
       frame = NSRect(x: orb.maxX - size.width, y: orb.maxY - size.height, width: size.width, height: size.height)
     }
     // Never leave it off the edge of the screen (a display may have been unplugged).
@@ -154,8 +165,25 @@ final class Shell: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDe
     log(on ? "compact" : "full")
   }
 
+  // The page shows a caption during a turn. The window widens toward the middle
+  // of the screen to make room, and the orb stays exactly where it is.
+  func setCaption(_ on: Bool) {
+    guard compact, on != captionOn else { return }
+    let orb = orbFrame
+    let screen = (window.screen ?? NSScreen.main)?.visibleFrame ?? orb
+    captionOn = on
+    var frame = orb
+    if on {
+      captionLeft = orb.midX > screen.midX
+      web.evaluateJavaScript("document.documentElement.classList.toggle('caption-right', \(!captionLeft))")
+      frame.size.width += captionWidth
+      if captionLeft { frame.origin.x -= captionWidth }
+    }
+    window.setFrame(frame, display: true)
+  }
+
   func rememberFrame() {
-    if compact { saved.set(NSStringFromPoint(window.frame.origin), forKey: "compactOrigin") }
+    if compact { saved.set(NSStringFromPoint(orbFrame.origin), forKey: "compactOrigin") }
     else { saved.set(NSStringFromSize(window.frame.size), forKey: "fullSize") }
   }
 
@@ -168,6 +196,8 @@ final class Shell: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDe
     guard let what = message.body as? String else { return }
     if what == "expand" && compact { apply(compact: false) }
     if what == "shrink" && !compact { rememberFrame(); apply(compact: true) }
+    if what == "caption-on" { setCaption(true) }
+    if what == "caption-off" { setCaption(false) }
   }
 
   // No Dock icon means no visible menu bar of its own, but the key

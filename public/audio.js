@@ -146,15 +146,16 @@ export class Player {
 
   getLevel = () => (this.current && this.analyser ? Math.min(1, rms(this.analyser, this.buf) * 4) : 0);
 
-  enqueue(promise) {
-    this.queue.push(promise);
+  // tag travels with the audio and comes back in onStart, so the caller knows which piece is playing.
+  enqueue(promise, tag) {
+    this.queue.push({ promise, tag });
     if (!this.playing) this.pump(this.gen);
   }
 
   async pump(gen) {
     this.playing = true;
     while (this.queue.length && gen === this.gen) {
-      const item = this.queue.shift();
+      const { promise: item, tag } = this.queue.shift();
       let bytes;
       try { bytes = await item; } catch (err) { this.onError?.(err); continue; }
       if (gen !== this.gen) return;
@@ -169,7 +170,7 @@ export class Player {
         src.onended = resolve;
         this.current = src;
         src.start();
-        this.onStart?.();
+        this.onStart?.(tag);
       });
       this.current = null;
     }
@@ -264,7 +265,7 @@ export class BrowserSpeaker {
       begun = true;
       this.speaking = true;
       this.lastWord = performance.now();
-      this.onStart?.();
+      this.onStart?.(text);
     };
     u.onstart = () => { fallback = setTimeout(begin, 500); };
     u.onboundary = () => {

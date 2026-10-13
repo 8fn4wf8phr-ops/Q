@@ -141,7 +141,10 @@ Not started. Q runs only as a page in a browser tab.
   - [x] Tauri comparison not run: Jacquez chose to stay with Swift for now (2026-10-13). Nothing was downloaded.
 - [x] Q's own window as a real part of Q (2026-10-13): `shell/` builds `bin/Q.app`, setup builds it, the launcher opens it. Still the full page in a window.
 - [x] Voice from ⌥Space works in the renamed build (Jacquez 2026-10-13).
-- [ ] Floating Q Core window: a small orb instead of the full page. No code; options to be proposed.
+- [x] Floating Q Core window: orb with a caption, top right (option B, chosen by Jacquez 2026-10-13).
+  - [x] Step 1, orb only: built 2026-10-13 and used by voice by Jacquez.
+  - [x] Step 2, caption: built 2026-10-13; Jacquez reports it works.
+  - [ ] AirPods as the microphone cut Q's voice; pinning the MacBook mic fixes it. Decide whether Q should warn or pin by default.
 - [ ] Menu bar item. Basic one exists (show or hide, reload, quit); no status shown in it yet.
 - [ ] Global push-to-talk. Key decided: ⌥Space (D-033). Works in the spike; not yet in a real shell. In the browser, Space still only works while the tab is focused.
 - [ ] Split-Core Q mark (D-017, adopted). Not in the code: `public/index.html` still draws the ring-and-stick mark.
