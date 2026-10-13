@@ -141,7 +141,7 @@ Not started. Q runs only as a page in a browser tab.
   - [x] Tauri comparison not run: Jacquez chose to stay with Swift for now (2026-10-13). Nothing was downloaded.
 - [ ] Floating Q Core window. No code.
 - [ ] Menu bar item. No code.
-- [ ] Global push-to-talk. No code; the key is undecided, and today Space only works while the tab is focused.
+- [ ] Global push-to-talk. Key decided: ⌥Space (D-033). Works in the spike; not yet in a real shell. In the browser, Space still only works while the tab is focused.
 - [ ] Split-Core Q mark (D-017, adopted). Not in the code: `public/index.html` still draws the ring-and-stick mark.
 - [x] Related, already built: `Start Q.command` double-click launcher. It is a convenience, not the wrapper.
 - [x] Related, already built: the speech helper is Swift, which a Swift shell could absorb.
