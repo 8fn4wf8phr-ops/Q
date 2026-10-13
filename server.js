@@ -271,9 +271,18 @@ function helperDrain() {
     const job = helper.pending.shift();
     if (!job) continue;
     clearTimeout(job.timer);
+    helperArmNext();
     if (header.error) job.reject(new Error(`speech helper: ${header.error}`));
     else job.resolve({ pcm, sampleRate: header.sampleRate, ms: header.ms });
   }
+}
+
+// Each sentence's time limit starts when it reaches the front of the queue,
+// not when it was asked for, so a slow sentence ahead of it doesn't use it up.
+function helperArmNext() {
+  const job = helper.pending[0];
+  const proc = helper.proc;
+  if (job && !job.timer && proc) job.timer = setTimeout(() => proc.kill(), job.limitMs);
 }
 
 function startHelper() {
@@ -281,7 +290,7 @@ function startHelper() {
     let proc;
     try { proc = spawn(CONFIG.speechHelperBin, [], { stdio: ['pipe', 'pipe', 'ignore'] }); }
     catch { resolve(null); return; }
-    const giveUp = setTimeout(() => proc.kill(), 8000);
+    const giveUp = setTimeout(() => proc.kill(), 30_000);
     helper.proc = proc;
     helper.buf = Buffer.alloc(0);
     helper.header = null;
@@ -299,23 +308,57 @@ function startHelper() {
       for (const job of helper.pending.splice(0)) { clearTimeout(job.timer); job.reject(new Error('speech helper stopped')); }
       resolve(null);
       if (tts.engine === 'helper' && !stopping) {
-        console.warn('[q] speech helper stopped; falling back to `say`');
+        console.warn('[q] speech helper stopped; using `say` while it restarts');
         tts.engine = 'say';
-        tts.note = 'speech helper stopped — using say (slower); restart Q to retry';
         initTts();
+        retryHelperLater();
       }
     });
   });
 }
 
-function helperSpeak(text, voiceId) {
+// limitMs: how long the helper may take once this sentence is at the front.
+// Normal sentences take well under a second. The first one after the Mac has
+// just booted has been seen to take 24 s, so the warm-up sentence gets longer.
+function helperSpeak(text, voiceId, limitMs = 30_000) {
   return new Promise((resolve, reject) => {
     if (!helper.proc) { reject(new Error('speech helper not running')); return; }
-    const proc = helper.proc;
-    const timer = setTimeout(() => proc.kill(), 15_000);
-    helper.pending.push({ resolve, reject, timer });
-    proc.stdin.write(JSON.stringify({ id: helper.nextId++, text, voice: voiceId || '' }) + '\n');
+    helper.pending.push({ resolve, reject, timer: null, limitMs });
+    helperArmNext();
+    helper.proc.stdin.write(JSON.stringify({ id: helper.nextId++, text, voice: voiceId || '' }) + '\n');
   });
+}
+
+// Starts the helper and switches Q's voice over to it. Used at launch and
+// again if the helper stops: Q speaks through `say` in the meantime.
+const HELPER_WARMUP_MS = 120_000;
+let helperRetries = 0;
+
+async function adoptHelper() {
+  const voices = (await exists(CONFIG.speechHelperBin)) ? await startHelper() : null;
+  if (!voices) return false;
+  tts.engine = 'helper';
+  tts.voices = helperVoices(voices);
+  tts.available = true;
+  tts.note = null;
+  // The first sentence after launch is slow; pay for it now.
+  helperSpeak('Ready.', tts.voices.find((v) => v.name === CONFIG.sayVoice)?.id, HELPER_WARMUP_MS)
+    .then(() => { helperRetries = 0; })
+    .catch(() => {});
+  return true;
+}
+
+function retryHelperLater() {
+  if (stopping || helperRetries >= 3) {
+    tts.note = 'speech helper stopped — using say (slower); restart Q to retry';
+    return;
+  }
+  helperRetries++;
+  tts.note = 'speech helper stopped — using say (slower) while it restarts';
+  setTimeout(async () => {
+    if (stopping || helper.proc) return;
+    if (!(await adoptHelper())) retryHelperLater();
+  }, 15_000 * helperRetries);
 }
 
 // Several installed voices share a name (US and UK variants, Enhanced and
@@ -339,14 +382,7 @@ function pcmToWav(pcm, rate) {
 
 async function initTts() {
   if (tts.engine === 'helper') {
-    const voices = (await exists(CONFIG.speechHelperBin)) ? await startHelper() : null;
-    if (voices) {
-      tts.voices = helperVoices(voices);
-      tts.available = true;
-      // The first sentence after launch costs about half a second; pay it now.
-      helperSpeak('Ready.', tts.voices.find((v) => v.name === CONFIG.sayVoice)?.id).catch(() => {});
-      return;
-    }
+    if (await adoptHelper()) return;
     tts.engine = 'say';
     tts.note = 'speech helper not built — using say (slower); run npm run setup';
   }
@@ -354,7 +390,7 @@ async function initTts() {
     tts.path = await which('say');
     tts.available = !!tts.path;
     if (tts.available) {
-      const res = await run(tts.path, ['-v', '?'], { timeoutMs: 10_000 });
+      const res = await run(tts.path, ['-v', '?'], { timeoutMs: 30_000 });
       tts.voices = res.stdout.split('\n').map((line) => {
         const m = line.match(/^(.+?)\s+([a-z]{2,3}_[A-Z0-9]{2,3})\s+#/);
         return m ? { name: m[1].trim(), lang: m[2] } : null;
