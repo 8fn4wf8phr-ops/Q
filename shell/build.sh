@@ -24,5 +24,14 @@ else
 fi
 rm -rf "$TMP"
 
-# Ad-hoc signature, local only: macOS needs one to remember the microphone permission.
-codesign --force --sign - "$APP" 2>/dev/null
+# Sign with a fixed identity when this Mac has one, so macOS recognises each
+# rebuild as the same app and doesn't ask for the microphone again. Otherwise an
+# ad-hoc signature, which works but makes macOS re-ask after every rebuild.
+# Q_SIGN_IDENTITY picks one by name or hash; "-" forces ad-hoc.
+IDENTITY="${Q_SIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null | awk '/Apple Development|Developer ID Application/ { print $2; exit }')}"
+if [ -n "$IDENTITY" ] && [ "$IDENTITY" != "-" ] && codesign --force --sign "$IDENTITY" "$APP" 2>/dev/null; then
+  echo "Signed Q.app with a fixed identity."
+else
+  codesign --force --sign - "$APP" 2>/dev/null
+  echo "Signed Q.app ad hoc (macOS will ask for the microphone again after a rebuild)."
+fi
