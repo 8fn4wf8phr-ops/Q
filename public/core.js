@@ -1,14 +1,22 @@
-// Q Core — Canvas 2D renderer for the Q energy core.
+// Q Core — Canvas 2D renderer for the Q energy core, in the Split-Core shape
+// (D-017, D-036). The shape itself comes from mark.js, so the live orb and the
+// static marks agree.
 // Visual state comes only from setState() and the level function the app
 // passes in (live mic level while recording, live playback level while
 // speaking). Nothing here animates "activity" that isn't happening.
 
+import { SHAPES, tailPoints } from './mark.js';
+
+// a: the upper-left segment, b: the blue it deepens to and the core's tint,
+// c: the right segment and the tail. The working states keep cyan on the left
+// and violet on the right so the mark stays itself; waiting, error and offline
+// take one colour over the whole mark.
 const STATES = {
-  boot:      { a: [59, 227, 255], b: [30, 91, 255],  c: [139, 92, 255], speed: 0.25, energy: 0.15, think: 0 },
-  idle:      { a: [59, 227, 255], b: [30, 91, 255],  c: [139, 92, 255], speed: 0.22, energy: 0.18, think: 0 },
-  listening: { a: [80, 235, 255], b: [40, 150, 255], c: [80, 235, 255], speed: 0.4,  energy: 0.45, think: 0 },
-  thinking:  { a: [150, 110, 255], b: [59, 227, 255], c: [40, 90, 255], speed: 1.2, energy: 0.4,  think: 1 },
-  speaking:  { a: [110, 210, 255], b: [150, 100, 255], c: [59, 227, 255], speed: 0.5, energy: 0.55, think: 0 },
+  boot:      { a: [0, 229, 255],   b: [59, 130, 246], c: [168, 85, 247],  speed: 0.25, energy: 0.15, think: 0 },
+  idle:      { a: [0, 229, 255],   b: [59, 130, 246], c: [168, 85, 247],  speed: 0.22, energy: 0.18, think: 0 },
+  listening: { a: [110, 242, 255], b: [40, 150, 255], c: [150, 125, 255], speed: 0.4,  energy: 0.45, think: 0 },
+  thinking:  { a: [120, 200, 255], b: [85, 110, 255], c: [192, 100, 255], speed: 1.2,  energy: 0.4,  think: 1 },
+  speaking:  { a: [60, 236, 255],  b: [70, 140, 255], c: [205, 92, 250],  speed: 0.5,  energy: 0.55, think: 0 },
   waiting:   { a: [255, 181, 71], b: [200, 120, 40], c: [255, 210, 120], speed: 0.1,  energy: 0.25, think: 0 },
   error:     { a: [255, 92, 110], b: [150, 40, 60],  c: [255, 92, 110], speed: 0.1,  energy: 0.2,  think: 0 },
   offline:   { a: [120, 138, 165], b: [55, 66, 92],  c: [90, 102, 130], speed: 0.06, energy: 0.06, think: 0 },
@@ -18,6 +26,11 @@ const rgba = (c, a) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
 const mix = (x, y, k) => x + (y - x) * k;
 const mixC = (x, y, k) => [mix(x[0], y[0], k), mix(x[1], y[1], k), mix(x[2], y[2], k)];
 const clamp = (v, lo = 0, hi = 1) => Math.max(lo, Math.min(hi, v));
+const SHAPE = SHAPES.full;
+const WHITE = [255, 255, 255];
+const ang = (deg) => (deg * Math.PI) / 180 - Math.PI / 2; // mark.js counts clockwise from twelve o'clock
+// Segments in the order the ring draws itself in on start: clockwise from the top.
+const ORDER = [...SHAPE.segments].sort((x, y) => x.from - y.from);
 
 export class QCore {
   constructor(canvas, { reducedMotion = false, assemble = true } = {}) {
@@ -147,6 +160,28 @@ export class QCore {
     const ease = 1 - Math.pow(1 - asm, 3);
     const breathe = this.reducedMotion ? 0 : Math.sin(this.time * 1.3) * 0.012;
     const r = R * (1 + breathe + this.level * 0.05);
+    const rOut = r * SHAPE.ringOuter;
+    const rIn = r * SHAPE.ringInner;
+    const rCore = r * SHAPE.core;
+    const pt = (rad, deg) => [cx + rad * Math.cos(ang(deg)), cy + rad * Math.sin(ang(deg))];
+    const sector = (outer, inner, from, to) => {
+      ctx.beginPath();
+      ctx.arc(cx, cy, outer, ang(from), ang(to));
+      ctx.arc(cx, cy, inner, ang(to), ang(from), true);
+      ctx.closePath();
+    };
+    // The ring draws itself in clockwise from the top while Q starts up.
+    const sweep = 360 * clamp(asm / 0.72);
+    const shown = ORDER.filter((s) => sweep > s.from).map((s) => ({ ...s, to: Math.min(s.to, sweep) }));
+    const paint = (s) => {
+      // right: bluer at the top, full violet toward the tail. lower: blue by the tail, cyan up the side. upper: cyan.
+      const [from, to] = s.id === 'right' ? [mixC(c.c, c.b, 0.4), c.c] : s.id === 'lower' ? [c.b, c.a] : [c.a, mixC(c.a, WHITE, 0.18)];
+      const g = ctx.createLinearGradient(...pt(rOut, s.from), ...pt(rOut, s.to));
+      g.addColorStop(0, rgba(from, ease));
+      g.addColorStop(1, rgba(to, ease));
+      return g;
+    };
+    const glowOf = (s) => (s.id === 'right' ? c.c : s.id === 'lower' ? c.b : c.a);
 
     ctx.clearRect(0, 0, w, h);
     ctx.save();
@@ -195,108 +230,150 @@ export class QCore {
       ctx.stroke();
     }
 
-    // Dark glass interior
+    // Ring glow: each segment lights the space around it, more with energy and live audio.
+    ctx.lineCap = 'butt';
+    const rMid = (rOut + rIn) / 2;
+    for (const s of shown) {
+      ctx.beginPath(); ctx.arc(cx, cy, rMid, ang(s.from), ang(s.to));
+      ctx.lineWidth = (rOut - rIn) * 1.9; ctx.strokeStyle = rgba(glowOf(s), (0.05 + c.energy * 0.05) * ease); ctx.stroke();
+      ctx.beginPath(); ctx.arc(cx, cy, rMid, ang(s.from), ang(s.to));
+      ctx.lineWidth = (rOut - rIn) * 1.35; ctx.strokeStyle = rgba(glowOf(s), (0.1 + c.energy * 0.1 + this.level * 0.15) * ease); ctx.stroke();
+    }
+
+    // The dark channel between ring and core, then the core itself: a navy sphere.
     ctx.globalCompositeOperation = 'source-over';
-    const glass = ctx.createRadialGradient(cx - r * 0.25, cy - r * 0.3, r * 0.05, cx, cy, r * 0.95);
-    glass.addColorStop(0, `rgba(40,60,110,${0.35 * ease})`);
-    glass.addColorStop(0.6, `rgba(8,12,26,${0.85 * ease})`);
-    glass.addColorStop(1, `rgba(4,6,14,${0.6 * ease})`);
-    ctx.fillStyle = glass;
-    ctx.beginPath();
-    ctx.arc(cx, cy, r * 0.93, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.fillStyle = `rgba(5,8,18,${0.92 * ease})`;
+    ctx.beginPath(); ctx.arc(cx, cy, rIn - r * 0.01, 0, Math.PI * 2); ctx.fill();
+    const sphere = ctx.createRadialGradient(cx - rCore * 0.3, cy - rCore * 0.4, rCore * 0.05, cx, cy, rCore);
+    sphere.addColorStop(0, rgba(mixC([46, 70, 180], c.b, 0.35), ease));
+    sphere.addColorStop(0.5, rgba(mixC([18, 28, 96], c.b, 0.12), ease));
+    sphere.addColorStop(1, `rgba(7,11,34,${ease})`);
+    ctx.fillStyle = sphere;
+    ctx.beginPath(); ctx.arc(cx, cy, rCore, 0, Math.PI * 2); ctx.fill();
+    ctx.lineWidth = Math.max(1, r * 0.02);
+    ctx.strokeStyle = rgba(c.b, 0.55 * ease);
+    ctx.stroke();
+    ctx.fillStyle = `rgba(255,255,255,${0.13 * ease})`;
+    ctx.beginPath(); ctx.ellipse(cx - rCore * 0.32, cy - rCore * 0.44, rCore * 0.4, rCore * 0.22, -0.49, 0, Math.PI * 2); ctx.fill();
     ctx.globalCompositeOperation = 'lighter';
 
-    // Tick ring (holographic dial)
+    // The core brightens with live audio (your voice while listening, Q's while speaking).
+    if (this.level > 0.02) {
+      const pulse = ctx.createRadialGradient(cx, cy, 0, cx, cy, rCore);
+      pulse.addColorStop(0, rgba(c.a, 0.5 * this.level));
+      pulse.addColorStop(1, rgba(c.b, 0));
+      ctx.fillStyle = pulse;
+      ctx.beginPath(); ctx.arc(cx, cy, rCore, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // Tick ring (holographic dial), in the channel
     const tickRot = this.reducedMotion ? 0 : -this.phase * 0.15;
     ctx.strokeStyle = rgba(c.a, 0.22 * ease);
     ctx.lineWidth = 1;
     ctx.beginPath();
     for (let i = 0; i < 72; i++) {
-      const ang = tickRot + (i / 72) * Math.PI * 2;
-      const r1 = r * 0.72;
-      const r2 = r * (i % 6 === 0 ? 0.665 : 0.695);
-      ctx.moveTo(cx + Math.cos(ang) * r1, cy + Math.sin(ang) * r1);
-      ctx.lineTo(cx + Math.cos(ang) * r2, cy + Math.sin(ang) * r2);
+      const a = tickRot + (i / 72) * Math.PI * 2;
+      const r1 = r * 0.625;
+      const r2 = r * (i % 6 === 0 ? 0.565 : 0.595);
+      ctx.moveTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1);
+      ctx.lineTo(cx + Math.cos(a) * r2, cy + Math.sin(a) * r2);
     }
     ctx.stroke();
 
-    // Thinking spinner — only while the model is actually generating
+    // Thinking spinner, inside the core — only while the model is actually generating
     if (c.think > 0.02) {
+      ctx.lineCap = 'round';
       for (let i = 0; i < 3; i++) {
-        const sr = r * (0.5 - i * 0.08);
+        const sr = rCore * (0.8 - i * 0.18);
         const st = this.phase * (2.2 + i * 0.9) * (i % 2 ? -1 : 1);
         ctx.lineWidth = 2.2 - i * 0.4;
-        ctx.strokeStyle = rgba(i === 1 ? c.b : c.a, 0.85 * c.think);
+        ctx.strokeStyle = rgba(i === 1 ? c.c : c.a, 0.85 * c.think);
         ctx.beginPath();
         ctx.arc(cx, cy, sr, st, st + 1.2);
         ctx.stroke();
       }
     }
 
-    // Main ring
-    const sweep = Math.PI * 2 * clamp(asm / 0.72);
-    const start = -Math.PI / 2;
-    const ringPath = () => { ctx.beginPath(); ctx.arc(cx, cy, r, start, start + sweep); };
-    ctx.lineCap = 'round';
-    ringPath(); ctx.lineWidth = R * 0.3; ctx.strokeStyle = rgba(c.a, 0.05 + c.energy * 0.05); ctx.stroke();
-    ringPath(); ctx.lineWidth = R * 0.17; ctx.strokeStyle = rgba(c.b, 0.12 + c.energy * 0.1 + this.level * 0.15); ctx.stroke();
-    let band;
-    if (ctx.createConicGradient) {
-      band = ctx.createConicGradient(this.reducedMotion ? 0 : this.phase * 0.6, cx, cy);
-      band.addColorStop(0, rgba(c.a, 1));
-      band.addColorStop(0.33, rgba(c.b, 0.95));
-      band.addColorStop(0.66, rgba(c.c, 0.95));
-      band.addColorStop(1, rgba(c.a, 1));
-    } else {
-      band = rgba(c.a, 1);
+    // The ring: solid segments, so the shape reads even with every glow removed.
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = r * 0.035;
+    for (const s of shown) {
+      const fill = paint(s);
+      sector(rOut, rIn, s.from, s.to);
+      ctx.fillStyle = fill; ctx.fill();
+      ctx.strokeStyle = fill; ctx.stroke();
+      sector(rOut, rOut - r * 0.07, s.from, s.to); // lit outer rim
+      ctx.fillStyle = `rgba(255,255,255,${0.2 * ease})`; ctx.fill();
     }
-    ringPath(); ctx.lineWidth = R * 0.085; ctx.strokeStyle = band; ctx.stroke();
-    ctx.beginPath(); ctx.arc(cx, cy, r - R * 0.012, start, start + sweep);
-    ctx.lineWidth = 1.4; ctx.strokeStyle = `rgba(235,250,255,${0.55 * ease})`; ctx.stroke();
 
-    // Q tail — a blade cutting through the lower-right of the ring
+    // A band of light travelling round the ring.
+    if (!this.reducedMotion && ctx.createConicGradient && shown.length) {
+      ctx.save();
+      ctx.beginPath();
+      for (const s of shown) {
+        ctx.moveTo(...pt(rOut, s.from));
+        ctx.arc(cx, cy, rOut, ang(s.from), ang(s.to));
+        ctx.arc(cx, cy, rIn, ang(s.to), ang(s.from), true);
+        ctx.closePath();
+      }
+      ctx.clip();
+      ctx.globalCompositeOperation = 'lighter';
+      const band = ctx.createConicGradient(this.phase * 0.6, cx, cy);
+      const k = 0.16 + c.energy * 0.3;
+      band.addColorStop(0, 'rgba(255,255,255,0)');
+      band.addColorStop(0.07, `rgba(255,255,255,${k})`);
+      band.addColorStop(0.16, 'rgba(255,255,255,0)');
+      band.addColorStop(0.5, 'rgba(255,255,255,0)');
+      band.addColorStop(0.57, `rgba(255,255,255,${k * 0.5})`);
+      band.addColorStop(0.66, 'rgba(255,255,255,0)');
+      band.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = band;
+      ctx.fillRect(cx - rOut, cy - rOut, rOut * 2, rOut * 2);
+      ctx.restore();
+    }
+
+    // Q tail — a blade in its own gap at the lower right, extending last
     const tailK = clamp((asm - 0.68) / 0.32);
     if (tailK > 0) {
-      const dir = Math.PI / 4;
-      const ux = Math.cos(dir), uy = Math.sin(dir);
-      const nx = -uy, ny = ux;
-      const r0 = r * 0.58;
-      const r1 = r0 + (r * 1.5 - r0) * (1 - Math.pow(1 - tailK, 3));
-      const wdt = R * 0.22;
-      const p = (d, off) => [cx + ux * d + nx * off, cy + uy * d + ny * off];
-      const pts = [p(r0, 0), p(r0 + (r1 - r0) * 0.45, wdt * 0.5), p(r1, 0), p(r0 + (r1 - r0) * 0.45, -wdt * 0.5)];
-      const glow = ctx.createLinearGradient(...p(r0, 0), ...p(r1, 0));
-      glow.addColorStop(0, rgba(c.b, 0.0));
-      glow.addColorStop(0.4, rgba(c.a, 0.35));
-      glow.addColorStop(1, rgba(c.c, 0.15));
-      ctx.strokeStyle = glow;
-      ctx.lineWidth = R * 0.2;
-      ctx.beginPath(); ctx.moveTo(...p(r0, 0)); ctx.lineTo(...p(r1, 0)); ctx.stroke();
-      const fill = ctx.createLinearGradient(...p(r0, 0), ...p(r1, 0));
-      fill.addColorStop(0, rgba(c.b, 0.25));
-      fill.addColorStop(0.5, rgba(c.a, 0.95));
-      fill.addColorStop(1, 'rgba(240,252,255,1)');
+      const t = SHAPE.tail;
+      const reach = t.from + (t.to - t.from) * (1 - Math.pow(1 - tailK, 3));
+      const pts = tailPoints(cx, cy, r, { ...t, to: reach });
+      ctx.globalCompositeOperation = 'lighter';
+      const [mx0, my0] = pt(r * t.from, t.angle);
+      const [mx1, my1] = pt(r * reach, t.angle);
+      ctx.lineCap = 'butt';
+      ctx.strokeStyle = rgba(c.c, (0.1 + c.energy * 0.1 + this.level * 0.15) * tailK);
+      ctx.lineWidth = r * t.half * 2.6;
+      ctx.beginPath(); ctx.moveTo(mx0, my0); ctx.lineTo(mx1, my1); ctx.stroke();
+      ctx.globalCompositeOperation = 'source-over';
+      const fill = ctx.createLinearGradient(mx0, my0, mx1, my1);
+      fill.addColorStop(0, rgba(c.c, tailK));
+      fill.addColorStop(1, rgba(mixC(c.c, WHITE, 0.28), tailK));
       ctx.fillStyle = fill;
+      ctx.strokeStyle = fill;
+      ctx.lineWidth = r * 0.035;
       ctx.beginPath();
       ctx.moveTo(...pts[0]);
       for (const q of pts.slice(1)) ctx.lineTo(...q);
       ctx.closePath();
       ctx.fill();
-      ctx.strokeStyle = `rgba(255,255,255,${0.7 * tailK})`;
-      ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(...p(r0 + (r1 - r0) * 0.15, 0)); ctx.lineTo(...p(r1, 0)); ctx.stroke();
+      ctx.stroke();
+      ctx.strokeStyle = `rgba(255,255,255,${0.3 * tailK})`; // lit upper edge
+      ctx.lineWidth = Math.max(1, r * 0.02);
+      ctx.beginPath(); ctx.moveTo(...pts[1]); ctx.lineTo(...pts[2]); ctx.stroke();
     }
+    ctx.globalCompositeOperation = 'lighter';
 
     // Particles
-    for (const pt of this.particles) {
-      const pr = r * (pt.orbit + this.level * 0.25);
-      const x = cx + Math.cos(pt.angle) * pr;
-      const y = cy + Math.sin(pt.angle) * pr * 0.92;
-      const tw = this.reducedMotion ? 0.6 : 0.45 + 0.55 * Math.sin(this.time * 2 + pt.tw);
-      ctx.fillStyle = rgba(pt.orbit > 1.5 ? c.c : c.a, 0.55 * tw * ease * (0.4 + c.energy));
+    for (const p of this.particles) {
+      const pr = r * (p.orbit + this.level * 0.25);
+      const x = cx + Math.cos(p.angle) * pr;
+      const y = cy + Math.sin(p.angle) * pr * 0.92;
+      const tw = this.reducedMotion ? 0.6 : 0.45 + 0.55 * Math.sin(this.time * 2 + p.tw);
+      ctx.fillStyle = rgba(p.orbit > 1.5 ? c.c : c.a, 0.55 * tw * ease * (0.4 + c.energy));
       ctx.beginPath();
-      ctx.arc(x, y, pt.size, 0, Math.PI * 2);
+      ctx.arc(x, y, p.size, 0, Math.PI * 2);
       ctx.fill();
     }
 

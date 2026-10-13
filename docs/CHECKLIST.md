@@ -151,7 +151,11 @@ Not started. Q runs only as a page in a browser tab.
 - [x] Jacquez (2026-10-13): quit from the orb's menu, started again from `Start Q.command`, voice turn worked.
 - [x] Right-click menu on the orb; closing the panel returns to the orb.
 - [ ] Global push-to-talk. Key decided: ⌥Space (D-033). Works in the spike; not yet in a real shell. In the browser, Space still only works while the tab is focused.
-- [ ] Split-Core Q mark (D-017, adopted). Not in the code: `public/index.html` still draws the ring-and-stick mark.
+- [ ] Split-Core Q mark (D-017, D-036), from `docs/design/split-core-reference.webp`:
+  - [x] Phase 1, shape and static SVG (2026-10-13); preview at `/mark.html`.
+  - [x] Phases 2 and 3, live orb in the new shape with all the earlier animations kept (2026-10-13; Jacquez: works).
+  - [ ] Phase 4, header mark, tab icon, avatar; page palette.
+  - [ ] Phase 5, app icon and menu bar icon.
 - [x] Related, already built: `Start Q.command` double-click launcher. It is a convenience, not the wrapper.
 - [x] Related, already built: the speech helper is Swift, which a Swift shell could absorb.
 
