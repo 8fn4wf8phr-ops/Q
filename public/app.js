@@ -7,7 +7,7 @@ import { SCHEMA, MAX_RUNS, MIN_FOR_P90, IDLE_MS, kindOf, sameWords, summarize, b
 
 // What this page needs from the server (server.js API_LEVEL). A server started
 // before an update keeps serving new pages until it is restarted.
-const NEEDS_API = 5;
+const NEEDS_API = 6;
 
 const $ = (sel) => document.querySelector(sel);
 const els = {
@@ -46,6 +46,12 @@ const els = {
   clauseFirst: $('#clauseFirst'),
   holdMic: $('#holdMic'),
   micSelect: $('#micSelect'),
+  savedNote: $('#savedNote'),
+  saveHistory: $('#saveHistory'),
+  retention: $('#retention'),
+  newConvo: $('#newConvo'),
+  deleteConvo: $('#deleteConvo'),
+  deleteAll: $('#deleteAll'),
   micNote: $('#micNote'),
   compare: $('#compare'),
   compareNote: $('#compareNote'),
@@ -89,6 +95,8 @@ const S = {
   phase: 'boot',
   status: null,
   messages: [],
+  conv: crypto.randomUUID(), // names this conversation in the saved history
+  saved: null,               // what the server says about saved conversations
   abort: null,
   ptt: false,
   arming: null,
@@ -569,7 +577,7 @@ async function runTurn(text) {
     const r = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ messages: S.messages }),
+      body: JSON.stringify({ messages: S.messages, conv: S.conv }),
       signal: controller.signal,
     });
     if (!r.ok) throw new Error(`chat HTTP ${r.status}`);
@@ -628,7 +636,83 @@ function finishTurn() {
   turn = null;
   S.abort = null;
   settle();
+  loadSaved(); // the counts in the History card, after the reply is under way
 }
+
+// ---------- saved conversations ----------
+// The server keeps what was said in a file on this Mac (history.js). This page
+// only shows the state, offers the controls, and carries on the last
+// conversation after a restart. Nothing saved is sent to the model beyond the
+// conversation on screen.
+
+function renderSaved(st) {
+  S.saved = st;
+  const ok = !!st?.available;
+  const s = st?.stats;
+  const n = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`;
+  els.saveHistory.disabled = els.retention.disabled = !ok;
+  els.saveHistory.checked = ok && st.settings.enabled;
+  if (ok) els.retention.value = String(st.settings.retentionDays);
+  els.deleteAll.disabled = !ok || !s.conversations;
+  els.deleteConvo.disabled = !ok || !S.messages.length;
+  const kept = ok && s.conversations
+    ? `${n(s.conversations, 'conversation')}, ${n(Math.round(s.turns / 2), 'exchange')} since ${new Date(s.oldestAt).toLocaleDateString([], { month: 'short', day: 'numeric' })} · ${s.bytes < 1024 ** 2 ? `${Math.round(s.bytes / 1024)} KB` : fmtBytes(s.bytes)}`
+    : 'Nothing saved yet';
+  els.savedNote.textContent = !st ? 'Couldn’t reach the server to check.'
+    : !ok ? `Not available: ${st.reason}. Nothing is being saved.`
+    : st.settings.enabled ? `Saving what you and Q say, as text, to ${st.file}. ${kept}. No audio is kept, and Q is not shown past conversations.`
+    : `Paused: nothing new is being saved. ${kept}.`;
+}
+
+async function loadSaved(resume = false) {
+  try {
+    const st = await fetch(`/api/history${resume ? '?resume=1' : ''}`).then((r) => (r.ok ? r.json() : null));
+    if (resume && st?.latest?.turns?.length && !S.messages.length) carryOn(st.latest);
+    renderSaved(st);
+  } catch { renderSaved(null); }
+}
+
+// After a restart or reload: put the last conversation back on screen and keep going in it.
+function carryOn(latest) {
+  S.conv = latest.id;
+  S.messages = latest.turns.map((t) => ({ role: t.role, content: t.content, at: t.at }));
+  for (const t of latest.turns) addBubble(t.role === 'user' ? 'user' : 'q', t.content);
+  systemNote(`Carried on from ${new Date(latest.lastAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · saved on this Mac`);
+}
+
+function newConversation() {
+  interrupt();
+  S.messages = [];
+  S.conv = crypto.randomUUID();
+  els.log.querySelectorAll('.msg, .note').forEach((el) => el.remove());
+  els.empty.hidden = false;
+  renderSaved(S.saved);
+}
+
+async function postSaved(path, body) {
+  try {
+    const r = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
+    renderSaved(await r.json());
+    return true;
+  } catch (err) {
+    systemNote(`Couldn’t change saved conversations: ${err.message}`, 'err');
+    loadSaved();
+    return false;
+  }
+}
+
+els.saveHistory.addEventListener('change', () => postSaved('/api/history/settings', { enabled: els.saveHistory.checked }));
+els.retention.addEventListener('change', () => postSaved('/api/history/settings', { retentionDays: Number(els.retention.value) }));
+els.newConvo.addEventListener('click', newConversation);
+els.deleteConvo.addEventListener('click', async () => {
+  if (!confirm('Delete this conversation from this Mac? This can’t be undone.')) return;
+  if (await postSaved('/api/history/delete', { conv: S.conv })) newConversation();
+});
+els.deleteAll.addEventListener('click', async () => {
+  if (!confirm('Delete every saved conversation from this Mac? This can’t be undone.')) return;
+  if (await postSaved('/api/history/delete', { all: true })) newConversation();
+});
 
 // Numbers only: nothing said or heard is ever stored here.
 function recordTurn(t) {
@@ -1026,6 +1110,7 @@ setInterval(tickClock, 15_000);
 navigator.mediaDevices?.addEventListener?.('devicechange', checkDefaultMic);
 
 setPhase('boot');
+loadSaved(true);
 renderHistory();
 await refreshStatus();
 checkDefaultMic();

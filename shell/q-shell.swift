@@ -446,6 +446,30 @@ final class Shell: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigati
     decisionHandler(ours ? .grant : .deny)
   }
 
+  // A web view on its own answers "no" to every confirm() and drops every
+  // alert() without showing anything. The page uses confirm() before deleting
+  // saved conversations, so show these as ordinary dialogs.
+  func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo,
+               completionHandler: @escaping (Bool) -> Void) {
+    let alert = NSAlert()
+    alert.messageText = message
+    alert.addButton(withTitle: "OK")
+    alert.addButton(withTitle: "Cancel")
+    NSApp.activate(ignoringOtherApps: true)
+    let yes = alert.runModal() == .alertFirstButtonReturn
+    log("asked: \(message) → \(yes ? "OK" : "Cancel")")
+    completionHandler(yes)
+  }
+
+  func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo,
+               completionHandler: @escaping () -> Void) {
+    let alert = NSAlert()
+    alert.messageText = message
+    NSApp.activate(ignoringOtherApps: true)
+    alert.runModal()
+    completionHandler()
+  }
+
   // Hold ⌥Space anywhere on the Mac: the page sees its own push-to-talk key go down and up.
   func key(down: Bool) {
     log("⌥Space \(down ? "down" : "up")")

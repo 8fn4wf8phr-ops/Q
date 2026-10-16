@@ -9,10 +9,11 @@
 import http from 'node:http';
 import { readFile, writeFile, mkdtemp, rm, access } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
-import { tmpdir } from 'node:os';
+import { tmpdir, homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createEchoFilter } from './echo.js';
+import { openHistory } from './history.js';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(ROOT, 'public');
@@ -45,14 +46,53 @@ const DEFAULTS = {
   sayRate: 0,
   piperBin: 'piper',
   piperModel: '',
+  // Where conversations are saved. Empty means ~/Library/Application Support/Q/history.sqlite,
+  // which is outside this folder so it can never be committed by accident.
+  historyFile: '',
 };
 
 const CONFIG = await loadConfig();
 // Raised whenever the page starts needing something new from the server, so a
 // page served by a server that hasn't been restarted can say so.
-const API_LEVEL = 5;
+const API_LEVEL = 6;
 const VERSION = await readFile(path.join(ROOT, 'package.json'), 'utf8').then((t) => JSON.parse(t).version).catch(() => null);
 let stopping = false;
+
+// ---------- saved conversations ----------
+// What was said is kept in one local file (history.js). It is never added to
+// what the model is sent. Old conversations are dropped at start and a few
+// times a day.
+// (Named `saved` because the chat handler already calls its message list `history`.)
+const saved = await openHistory(CONFIG.historyFile);
+// After a restart the page carries on the last conversation if it was active this recently.
+const RESUME_MS = 6 * 3600_000;
+const pruneHistory = () => { try { saved.prune(); } catch (err) { console.warn('[q] history prune failed:', err.message); } };
+pruneHistory();
+setInterval(pruneHistory, 6 * 3600_000).unref();
+
+// Saved conversations are private. Only Q's own page may read or change them:
+// the request has to be addressed to this server by its local name, and come
+// from a page this server served, which shuts out other sites and DNS tricks.
+function fromOwnPage(req) {
+  const hosts = [`127.0.0.1:${CONFIG.port}`, `localhost:${CONFIG.port}`];
+  if (!hosts.includes(req.headers.host)) return false;
+  const origin = req.headers.origin;
+  if (origin && !hosts.some((h) => origin === `http://${h}`)) return false;
+  const site = req.headers['sec-fetch-site'];
+  return !site || site === 'same-origin' || site === 'none';
+}
+
+function historyState(withLatest) {
+  return {
+    available: saved.available,
+    reason: saved.reason,
+    file: saved.file ? saved.file.replace(homedir(), '~') : null,
+    settings: saved.settings(),
+    stats: saved.stats(),
+    resumeHours: RESUME_MS / 3600_000,
+    ...(withLatest ? { latest: saved.latest(RESUME_MS) } : {}),
+  };
+}
 
 async function loadConfig() {
   let user = {};
@@ -64,6 +104,8 @@ async function loadConfig() {
   const cfg = { ...DEFAULTS, ...user };
   if (process.env.Q_MODEL) cfg.model = process.env.Q_MODEL;
   if (process.env.Q_PORT) cfg.port = Number(process.env.Q_PORT);
+  if (process.env.Q_HISTORY_FILE) cfg.historyFile = process.env.Q_HISTORY_FILE;
+  if (!cfg.historyFile) cfg.historyFile = path.join(homedir(), 'Library', 'Application Support', 'Q', 'history.sqlite');
   for (const key of ['whisperModel', 'whisperCompareModel', 'piperModel', 'speechHelperBin']) {
     if (cfg[key] && !path.isAbsolute(cfg[key])) cfg[key] = path.join(ROOT, cfg[key]);
   }
@@ -638,6 +680,11 @@ async function streamChatInner(req, res) {
           if (held) { said += held; send({ type: 'token', text: held }); }
           lastModelUse = Date.now();
           if (!bench) {
+            // Save the finished exchange (history.js decides whether saving is on).
+            const asked = valid[valid.length - 1];
+            if (said && asked?.role === 'user' && fromOwnPage(req)) {
+              try { saved.record(body.conv, asked.content, said); } catch (err) { console.warn('[q] could not save the turn:', err.message); }
+            }
             keep.lastTurnAt = lastModelUse;
             // What the next turn will send, up to the point where its new
             // message starts. Usually that is this turn plus the reply. Every
@@ -937,6 +984,22 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, await whisperRequest(CONFIG.whisperComparePort, await readBody(req, 25_000_000)));
     }
     if (req.method === 'POST' && pathname === '/api/chat') return await streamChat(req, res);
+    if (pathname.startsWith('/api/history')) {
+      if (!fromOwnPage(req)) return json(res, 403, { error: 'saved conversations are only available to Q’s own page' });
+      if (req.method === 'GET' && pathname === '/api/history') return json(res, 200, historyState(new URL(req.url, 'http://localhost').searchParams.get('resume') === '1'));
+      if (req.method === 'POST' && pathname === '/api/history/settings') {
+        const body = JSON.parse((await readBody(req, 10_000)).toString('utf8') || '{}');
+        saved.setSettings({ enabled: body.enabled, retentionDays: body.retentionDays });
+        pruneHistory();
+        return json(res, 200, historyState(false));
+      }
+      if (req.method === 'POST' && pathname === '/api/history/delete') {
+        const body = JSON.parse((await readBody(req, 10_000)).toString('utf8') || '{}');
+        const removed = body.all === true ? saved.clear() : saved.remove(body.conv);
+        return json(res, 200, { removed, ...historyState(false) });
+      }
+      return json(res, 404, { error: 'not found' });
+    }
     if (req.method === 'POST' && pathname === '/api/speak') {
       const { text, voice } = JSON.parse((await readBody(req, 100_000)).toString('utf8') || '{}');
       const out = await synthesize(String(text || ''), typeof voice === 'string' ? voice : '');

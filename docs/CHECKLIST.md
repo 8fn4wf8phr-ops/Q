@@ -120,7 +120,7 @@ Nothing here is finished. Some of it was started early while fixing v0.1.
 - [x] Jacquez (2026-10-12): no first words lost in the session with the mic hold. The "already speaking" flag on 8 of 16 kept-open presses is therefore not a sign of lost speech.
 - [ ] Still open: the first press after a pause of more than 60 s pays the full 0.66 s.
 - [x] "Mic opened in" was under-reported in Q's window (WebKit says the mic is open before sound flows). Fixed 2026-10-13: the clock now stops when sound arrives.
-- [ ] Confirm in Q's window: fresh presses should now read a few tenths of a second, held ones a few hundredths.
+- [x] Confirmed by Jacquez in Q's window (2026-10-13).
 - [x] Keep Q warm from startup, not only after the first turn (built 2026-10-12, D-031; first turn 6.4 minutes after a restart had taken 7.8 s).
 - [x] Seen in real use (2026-10-12): first turn after a restart, three pings before it, 1.31 s.
 - [x] A turn is labelled cold only when the model load took over 1 s (was 0.3 s, which mislabelled a slow warm turn).
@@ -149,7 +149,7 @@ Not started. Q runs only as a page in a browser tab.
   - [x] Step 1, orb only: built 2026-10-13 and used by voice by Jacquez.
   - [x] Step 2, caption: built 2026-10-13; Jacquez reports it works.
   - [x] AirPods as the microphone cut Q's voice: Q now uses the built-in mic by itself when the default is wireless (D-034, built 2026-10-13).
-  - [ ] Check D-034 on the real Mac: AirPods in, mic menu on Automatic, Q's voice not cut.
+  - [x] D-034 checked on the real Mac by Jacquez (2026-10-13): works.
 - [x] Menu bar item: Q's state on the first line, open panel or shrink, show or hide, reload, server log, quit.
 - [x] One app, no Terminal window (D-035, built 2026-10-13): Q's window starts and stops the server.
 - [x] Jacquez (2026-10-13): quit from the orb's menu, started again from `Start Q.command`, voice turn worked.
@@ -167,11 +167,13 @@ Not started. Q runs only as a page in a browser tab.
 
 Not started. Nothing Q hears or says is saved.
 
-- [ ] Searchable local history. No code; the conversation lives in the page's memory and is gone on reload.
+- [ ] Searchable local history.
+  - [x] Step 1 (2026-10-13, D-037): conversations are saved to a local SQLite file. Confirmed by Jacquez: saving, carrying on after a restart, deleting.
+  - [ ] Step 2: a History view with keyword search, and export.
 - [ ] Long-term memories saved only after Jacquez approves them. No code.
-- [ ] Session continuity. No code.
-- [ ] Deletion, retention and export controls for memory. No code.
-- [ ] Storage choice (D-011, proposed: keyword search first, Node's built-in SQLite if it holds up).
+- [ ] Session continuity. Step 1 carries on the last conversation after a reload or restart if it was active within 6 hours. Nothing yet carries across separate conversations.
+- [ ] Deletion, retention and export controls for memory. Deletion (one or all), pause and retention are in step 1; export is not built.
+- [x] Storage choice: Node's built-in SQLite, keyword search later, no embeddings (D-011 adopted through D-037).
 - The only things stored today are settings and latency numbers in the browser's local storage.
 
 # v0.5 — a few approved, verified Mac actions

@@ -21,7 +21,7 @@ Q is Jacquez's private, original AI companion for macOS, named after his nicknam
 
 ## Hardware and stack
 - Apple M1 MacBook Air, 8 GB unified memory, usually with VS Code open.
-- Plain Node.js server (no npm dependencies), Ollama with `llama3.2:3b`, whisper.cpp (speech to text), a small Swift helper that keeps a macOS voice loaded (text to speech; falls back to `say`), Canvas 2D for the Q Core.
+- Plain Node.js server (no npm dependencies), Ollama with `llama3.2:3b`, whisper.cpp (speech to text), a small Swift helper that keeps a macOS voice loaded (text to speech; falls back to `say`), Canvas 2D for the Q Core. Q's own window is a thin Swift + WKWebView app (`bin/Q.app`, D-032) that shows the same page, starts and stops the server (D-035) and provides the menu bar item and the global ⌥Space talk key (D-033). Conversations are saved in SQLite using the copy built into Node (D-037).
 - Runs locally and binds to 127.0.0.1. That alone does **not** prove there's no outbound network traffic.
 - Offline-first. Hybrid (cloud reasoning) was measured against a written rule on 2026-10-11 and **Q stays local** (D-027). Revisiting it requires new measurements and Jacquez's explicit opt-in. There is never a silent cloud fallback.
 
@@ -35,7 +35,7 @@ Q is Jacquez's private, original AI companion for macOS, named after his nicknam
 - Q is confident, warm, witty, concise, observant, and honest about its limits. It never fakes feelings, actions or capabilities.
 - Personality lives in `persona.md`. Express traits as **example replies**, not percentages, because small models ignore numbers like "humor 70%".
 - Profiles (Personal, Professional, Mentor, Operator) come later. **Profiles never change permissions.**
-- Q Core: a cyan/blue/violet Q-shaped ring on a dark UI. It animates only for real events. Mockups are mood references, not specs. The chosen identity direction is the Split-Core Q (D-017); it is not in the UI yet.
+- Q Core: a cyan/blue/violet Q-shaped ring on a dark UI. It animates only for real events. Mockups are mood references, not specs. The identity is the Split-Core Q (D-017), in the UI since 2026-10-13 (D-036): the live orb, the page marks, the app icon and the menu bar icon are all drawn from one description of the shape in `public/mark.js`. The reference image is `docs/design/split-core-reference.webp`.
 
 ## Memory and privacy
 - Three separate layers: short-term context (recent turns), searchable local history, and long-term memories saved only after Jacquez approves them.
@@ -47,9 +47,9 @@ Q is Jacquez's private, original AI companion for macOS, named after his nicknam
 | Version | Goal |
 |---|---|
 | **v0.1** | Validate on the real Mac: latency (p50/p90, cold vs warm), memory pressure, swap, export, first quality test. **Closed 2026-10-11 (D-028).** |
-| **v0.2** (current) | Speech recognition accuracy on Jacquez's real voice first; then personality, continuity and speed; better macOS voice. Blind quality evaluation started in v0.1 and continues here |
-| v0.3 | **Decide the native wrapper first** (Swift + WKWebView vs Tauri vs Electron), then build the floating core, menu bar and global push-to-talk |
-| v0.4 | Persistent history, approved memories, session continuity |
+| **v0.2** | Speech recognition accuracy on Jacquez's real voice first; then personality, continuity and speed; better macOS voice. Blind quality evaluation started in v0.1 and continues here. **Done except the better macOS voice (D-013), which is still open** |
+| **v0.3** | **Decide the native wrapper first** (Swift + WKWebView vs Tauri vs Electron), then build the floating core, menu bar and global push-to-talk. **Built 2026-10-13:** Swift + WKWebView (D-032, Tauri not measured), floating orb with caption, menu bar item, ⌥Space (D-033), one app (D-035), Split-Core mark (D-036) |
+| **v0.4** (current) | Persistent history, approved memories, session continuity. In four steps: saved history with pause, delete and retention controls (step 1); search and export; approved memories; recall on request |
 | v0.5 | A few approved, verified Mac actions (open apps, folders, VS Code projects) |
 | **v1.0** | Stable daily use: fast voice, good personality, floating presence, memory, safe basic actions |
 | v1.1+ | Reminders and notes, document retrieval, advanced voice/cloning, workflows, optional hybrid |
