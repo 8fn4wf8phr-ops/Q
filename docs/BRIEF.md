@@ -47,7 +47,7 @@ Q is Jacquez's private, original AI companion for macOS, named after his nicknam
 | Version | Goal |
 |---|---|
 | **v0.1** | Validate on the real Mac: latency (p50/p90, cold vs warm), memory pressure, swap, export, first quality test. **Closed 2026-10-11 (D-028).** |
-| **v0.2** | Speech recognition accuracy on Jacquez's real voice first; then personality, continuity and speed; better macOS voice. Blind quality evaluation started in v0.1 and continues here. **Done except the better macOS voice (D-013), which is still open** |
+| **v0.2** | Speech recognition accuracy on Jacquez's real voice first; then personality, continuity and speed; better macOS voice. Blind quality evaluation started in v0.1 and continues here. **Closed 2026-10-16 (D-039).** |
 | **v0.3** | **Decide the native wrapper first** (Swift + WKWebView vs Tauri vs Electron), then build the floating core, menu bar and global push-to-talk. **Built 2026-10-13:** Swift + WKWebView (D-032, Tauri not measured), floating orb with caption, menu bar item, ⌥Space (D-033), one app (D-035), Split-Core mark (D-036) |
 | **v0.4** (current) | Persistent history, approved memories, session continuity. In four steps: saved history with pause, delete and retention controls (step 1); search and export; approved memories; recall on request |
 | v0.5 | A few approved, verified Mac actions (open apps, folders, VS Code projects) |

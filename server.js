@@ -407,7 +407,9 @@ function retryHelperLater() {
 // Premium downloads), so the list shown to the UI gets unique labels.
 function helperVoices(raw) {
   const quality = { 2: 'Enhanced', 3: 'Premium' };
-  const labelled = raw.map((v) => ({ id: v.id, lang: v.lang.replace('-', '_'), name: quality[v.quality] ? `${v.name} (${quality[v.quality]})` : v.name }));
+  // Newer macOS already puts "(Enhanced)" in the voice's own name; don't say it twice.
+  const label = (v) => (quality[v.quality] && !v.name.includes(quality[v.quality]) ? `${v.name} (${quality[v.quality]})` : v.name);
+  const labelled = raw.map((v) => ({ id: v.id, lang: v.lang.replace('-', '_'), name: label(v) }));
   return labelled
     .map((v) => (labelled.filter((x) => x.name === v.name).length > 1 ? { ...v, name: `${v.name} · ${v.lang}` } : v))
     .sort((a, b) => a.name.localeCompare(b.name));

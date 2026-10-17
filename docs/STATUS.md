@@ -2,7 +2,7 @@
 
 _Claude Code updates this after every change. Labels: **proposed → approved → built → tested (stand-ins) → verified (real Mac)**. Only "verified" means it worked on Jacquez's Mac with real components._
 
-**Current version:** v0.2 (v0.1 closed by Jacquez on 2026-10-11, D-028)  
+**Current version:** v0.4 in progress (v0.1 closed 2026-10-11, D-028; v0.2 closed 2026-10-16, D-039; v0.3 built 2026-10-13, not formally closed)  
 **Last updated:** 2026-10-13 (Claude Code: v0.4 step 1: conversations are saved to a local file with pause, delete and retention controls (D-037), confirmed by Jacquez. AirPods as microphone cut Q's voice mid-sentence; pinning the MacBook mic fixed it)  
 **What's left:** see [CHECKLIST.md](CHECKLIST.md), which covers the whole roadmap and lists each item as built or not, checked against the code.
 
@@ -130,12 +130,10 @@ _Claude Code updates this after every change. Labels: **proposed → approved �
 - The repo contains no tests, so there is no evidence here for the "tested (stand-ins)" labels above.
 
 ## Next steps
-v0.1 is closed (D-028); everything that was listed here is done. For v0.2, in order:
-1. Jacquez: restart Q, then a normal session past 8 turns with Q left behind VS Code for a few minutes, to confirm trim priming and the hidden-page heartbeat, and to hear the new persona.
-2. Jacquez: Whisper on his real voice (the top v0.2 item): tick "Compare Whisper models on my voice" for 20–30 turns on the built-in microphone and paste the score.
-3. Jacquez: restart Q and reload the page, press "Clear", then a session of follow-up turns to check the microphone hold on the real mic (look for "Mic was ready in" in the latency panel) and that the first turn after a restart is fast.
-4. Evaluate Enhanced or Premium macOS voices (D-013).
-5. Done 2026-10-13: native wrapper chosen, Swift + WKWebView (D-032). v0.3 can start from the spike in `spike/`.
+v0.1 and v0.2 are closed (D-028, D-039) and v0.3 is built. In v0.4:
+1. Step 2: a History view with keyword search across saved conversations, and export. Proposal written 2026-10-16, waiting for Jacquez.
+2. Step 3: approved memories (facts Q keeps only after Jacquez says yes).
+3. Step 4: recall on request ("what did we say about X?").
 
 The full list is in [CHECKLIST.md](CHECKLIST.md).
 
@@ -626,5 +624,21 @@ Both slipped once, on the same prompt (the resume: the current persona said "I c
 - **A was reverted.** It made Q answer when it should have declined: it described a resume it cannot see, said what was decided "last week", and guessed a MacBook release ("probably next spring or summer"). `persona.md` is back to the committed text.
 - B looks honest and somewhat shorter, but the current persona varies a lot from run to run on its own (median 15 to 23.5 words), so two runs do not prove B is better. Saved later the same day after more runs (below).
 - The length of the closing paragraph matters: adding a third instruction to it was enough to weaken the two honesty checks already there.
+
+### 2026-10-16 — Enhanced voices (D-013), measured through Q's speech helper
+Jacquez downloaded two Enhanced voices; no Premium voice is installed. Each voice spoke the same 6 sentences 3 times, interleaved, through `/api/speak` (the helper renders audio without playing it):
+
+| Voice | First use | Per sentence, median (max) | Rendering time per second of speech | Helper memory after use |
+|---|---|---|---|---|
+| Samantha (current) | 1.45 s | 0.11 s (0.41 s) | 34 ms | 9 MB |
+| Samantha (Enhanced) | 0.15 s | 0.20 s (0.59 s) | 55 ms | 11 MB |
+| Noelle (Enhanced) | 1.22 s | 0.15 s (1.18 s) | 54 ms | 12 MB |
+
+- Enhanced voices take about 1.6 times as long to render, still about 18 times faster than they speak; on a typical first sentence that is roughly 0.05–0.1 s more before Q is heard.
+- Memory: no meaningful growth in the helper process (the voice data itself may sit outside it, so this is a lower bound).
+- First use of a voice is slow once (up to 1.5 s) while macOS loads it; Q's helper warms up at start with the default voice only.
+- A first attempt sent voice ids instead of the names the server matches, so all three came out as Samantha; that run was discarded.
+- **Decision (D-038): Jacquez keeps the standard Samantha.** The Enhanced voices stay available in the Voice menu.
+- Fixed while measuring: the voice menu said "Samantha (Enhanced) (Enhanced)", because newer macOS already puts the quality in the name.
 
 None of the speech-engine tables above are end-to-end numbers from Jacquez's browser. The cache benchmark (`scripts/bench-cache.mjs`) has not been run against real Ollama yet.

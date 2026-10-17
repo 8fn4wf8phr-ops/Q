@@ -92,7 +92,7 @@ Covers the whole roadmap in `BRIEF.md`, v0.1 through v1.1+. v0.1 is itemised bec
 
 # v0.2 — tune personality, continuity and speed; blind quality evaluation; better macOS voice
 
-Nothing here is finished. Some of it was started early while fixing v0.1.
+**Closed 2026-10-16 (D-039).** The unchecked items below are carried forward and listed in D-039; none blocks v0.4.
 
 - [x] **Top item: Whisper accuracy.** Settled 2026-10-11: with the built-in microphone pinned and the vocabulary hint on, `base.en` differed from `small.en` on 3 of 43 turns, and Jacquez chose to stay on `base.en` (D-029). Original note: `base.en` misheard about 1 turn in 3 at normal volume on Jacquez's real voice. Test `small.en` and the vocabulary hint on his real voice, and check whether clipped beginnings are part of it.
   - [x] `small.en` downloaded, verified and compared on synthesized speech (2026-10-10): 68% exact with the hint against 58% for `base.en` with the hint, for about 0.29 s and 350 MB more. His real failures were not reproduced.
@@ -132,7 +132,7 @@ Nothing here is finished. Some of it was started early while fixing v0.1.
 - [x] Rule checks redone with the fixed page (2026-10-11).
 - [x] Local-vs-hybrid thresholds written down (D-027) and met on 2026-10-11.
 - [x] Better voice, first step: Samantha is the default (D-018).
-- [ ] Better voice, second step: evaluate Enhanced or Premium voices (D-013). None are installed on this Mac; the helper already labels them when they are.
+- [x] Better voice, second step: Enhanced voices evaluated 2026-10-16 (D-013); Jacquez keeps the standard Samantha (D-038). No Premium voice tried.
 
 # v0.3 — native wrapper, floating core, menu bar, global push-to-talk
 
