@@ -71,6 +71,7 @@
           <option value="0">Until I delete them</option>
         </select></label>
         <div class="runbtns">
+          <button id="browseHistory" type="button" class="ghost" disabled>Browse and search</button>
           <button id="newConvo" type="button" class="ghost">New conversation</button>
           <button id="deleteConvo" type="button" class="ghost" disabled>Delete this one</button>
           <button id="deleteAll" type="button" class="ghost" disabled>Delete everything</button>
@@ -122,6 +123,26 @@
       </section>
     </aside>
   </main>
+
+  <!-- Saved conversations: browse, search, read, continue, export, delete. Covers the panel while open. -->
+  <section id="historyView" class="hview" hidden aria-label="Saved conversations">
+    <header class="hview-top">
+      <button id="hvBack" type="button" class="ghost">← Back</button>
+      <strong id="hvTitle">Saved conversations</strong>
+      <button id="hvExportAll" type="button" class="ghost">Export all</button>
+    </header>
+    <input id="hvSearch" class="hv-search" type="search" placeholder="Search everything you and Q said…" autocomplete="off" aria-label="Search saved conversations" />
+    <p id="hvNote" class="hint" aria-live="polite"></p>
+    <div id="hvList" class="hv-list"></div>
+    <div id="hvConvo" class="hv-convo" hidden>
+      <div class="runbtns">
+        <button id="hvContinue" type="button" class="ghost">Continue this conversation</button>
+        <button id="hvExport" type="button" class="ghost">Export</button>
+        <button id="hvDelete" type="button" class="ghost">Delete</button>
+      </div>
+      <div id="hvTurns" class="hv-turns"></div>
+    </div>
+  </section>
 
   <script type="module" src="app.js"></script>
 </body>

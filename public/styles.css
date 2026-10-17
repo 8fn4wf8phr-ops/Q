@@ -338,3 +338,31 @@ html.compact .caption.gone { opacity: 0; }
 .cap-heard { color: var(--text-2); font-size: 12px; white-space: nowrap; text-overflow: ellipsis; }
 .cap-said { color: var(--text); font-size: 13.5px; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
 .cap-heard:empty, .cap-said:empty { display: none; }
+
+/* ---------- saved conversations view ---------- */
+.hview {
+  position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; gap: 10px;
+  padding: 18px 22px; background: var(--bg); overflow: hidden;
+}
+html.compact .hview { display: none !important; }
+.hview-top { display: flex; align-items: center; gap: 12px; }
+.hview-top strong { flex: 1; font: 600 13px var(--font); letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-2); }
+.hv-search {
+  width: 100%; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--line-hi);
+  background: rgba(4, 8, 18, 0.6); color: var(--text); font: inherit;
+}
+.hv-search:focus { outline: none; border-color: var(--cyan); }
+.hv-list, .hv-turns { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.hv-convo { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
+.hv-item {
+  text-align: left; font: inherit; color: var(--text); cursor: pointer; padding: 10px 14px; border-radius: 12px;
+  border: 1px solid var(--line); background: var(--glass);
+}
+.hv-item:hover, .hv-item:focus-visible { border-color: var(--line-hi); outline: none; }
+.hv-item .when { display: block; font-size: 11px; color: var(--text-3); margin-bottom: 3px; }
+.hv-item .what { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hv-item mark, .hv-turn mark { background: rgba(0, 229, 255, 0.22); color: var(--text); border-radius: 3px; padding: 0 2px; }
+.hv-turn { padding: 8px 12px; border-radius: 10px; background: var(--glass); border: 1px solid transparent; }
+.hv-turn.user { background: rgba(59, 130, 246, 0.14); }
+.hv-turn .who { display: block; font-size: 11px; color: var(--text-3); margin-bottom: 2px; }
+.hv-turn.found { border-color: var(--cyan); }

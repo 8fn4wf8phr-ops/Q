@@ -169,10 +169,10 @@ Not started. Nothing Q hears or says is saved.
 
 - [ ] Searchable local history.
   - [x] Step 1 (2026-10-13, D-037): conversations are saved to a local SQLite file. Confirmed by Jacquez: saving, carrying on after a restart, deleting.
-  - [ ] Step 2: a History view with keyword search, and export.
+  - [ ] Step 2: a History view with keyword search, and export: built 2026-10-16 (D-040), waiting for Jacquez.
 - [ ] Long-term memories saved only after Jacquez approves them. No code.
 - [ ] Session continuity. Step 1 carries on the last conversation after a reload or restart if it was active within 6 hours. Nothing yet carries across separate conversations.
-- [ ] Deletion, retention and export controls for memory. Deletion (one or all), pause and retention are in step 1; export is not built.
+- [ ] Deletion, retention and export controls for memory. Deletion (one or all), pause and retention are in step 1; export to Markdown in step 2 (built, not yet confirmed).
 - [x] Storage choice: Node's built-in SQLite, keyword search later, no embeddings (D-011 adopted through D-037).
 - The only things stored today are settings and latency numbers in the browser's local storage.
 

@@ -50,11 +50,37 @@ try {
   h.setSettings({ retentionDays: 0 });
   check('"until I delete them" never prunes', h.prune(t0 + 5000 * DAY) === 0 && h.list().length === 1);
 
+  console.log('search and export');
+  h.record(A, 'How do I learn Python quickly?', 'Start small with one project.', t0 + 8000);
+  h.record(A, 'What about the Roman Empire?', 'Big topic. Rise or fall?', t0 + 8500);
+  let hits = h.search('python');
+  check('finds a word, case-insensitive', hits.length === 1 && hits[0].conv === A && hits[0].role === 'user', JSON.stringify(hits));
+  check('matches the beginning of a word', h.search('pyth').length === 1 && h.search('emp').length === 1);
+  check('several words must all appear in the same turn', h.search('roman empire').length === 1 && h.search('roman python').length === 0);
+  check('finds words in Q’s replies too', h.search('project')[0]?.role === 'assistant');
+  check('marks the match in the snippet', /\u0002Python\u0003/.test(hits[0].snippet), JSON.stringify(hits[0].snippet));
+  check('newest first', h.search('topic python start').length === 0 && h.search('o').length >= 2 && h.search('o')[0].at >= h.search('o')[1].at);
+  check('search syntax typed by hand is treated as plain words', ['"', 'NEAR(a b)', 'python OR', '* AND -', '\'); drop table turns; --', 'col:val'].every((t) => Array.isArray(h.search(t))) && h.stats().turns > 0);
+  check('empty or wordless searches return nothing', h.search('').length === 0 && h.search('  ?!  ').length === 0 && h.search(null).length === 0);
+  check('accents are ignored', h.record(B, 'Café olé', 'Sure.', t0 + 9500) && h.search('cafe').length === 1);
+  check('the list gives each conversation’s first line', h.list().find((c) => c.id === A)?.firstLine === `Remember ${SECRET}` || h.list().find((c) => c.id === A)?.firstLine === 'How do I learn Python quickly?', JSON.stringify(h.list()));
+  const conv = h.conversation(A);
+  check('opens one conversation with all its turns', conv.id === A && conv.turns.length === conv.turns.filter((t) => t.role).length && conv.turns.length >= 4 && h.conversation('nope') === null && h.conversation('../x') === null);
+  const md = h.exportMarkdown([A], new Date(t0));
+  check('exports a conversation as readable text', md.startsWith('# Q conversations') && md.includes('**You:** How do I learn Python quickly?') && md.includes('**Q:** Start small with one project.') && !md.includes('Café'), md.slice(0, 300));
+  const mdAll = h.exportMarkdown(undefined, new Date(t0));
+  check('exports everything, oldest conversation first', mdAll.includes('Café') && mdAll.includes('Python') && mdAll.indexOf('## ') < mdAll.lastIndexOf('## ') && /2 conversations/.test(mdAll));
+  check('export ignores bad ids', !h.exportMarkdown(['../x'], new Date(t0)).includes('**You:**'));
+  h.remove(B);
+  check('a deleted conversation can no longer be found', h.search('cafe').length === 0 && h.search('python').length === 1);
+
   h.record(A, `Remember ${SECRET}`, 'Got it.', t0 + 10_000);
-  check('deleting one conversation removes its turns', h.remove(A) === 1 && h.stats().turns === 4 && h.remove(A) === 0 && h.remove('../x') === 0);
+  check('deleting one conversation removes its turns', h.remove(A) === 1 && h.stats().turns === 0 && h.remove(A) === 0 && h.remove('../x') === 0, JSON.stringify(h.stats()));
+  check('its words are gone from the search index', h.search(SECRET.split('-')[0]).length === 0 && h.search('python').length === 0);
   check('a deleted conversation leaves no trace in the file', !readFileSync(file).includes(SECRET));
   h.record(A, `Remember ${SECRET}`, 'Got it.', t0 + 11_000);
-  check('delete everything empties it', h.clear() === 2 && h.stats().conversations === 0 && h.stats().turns === 0 && h.latest() === null);
+  const before = h.stats().conversations;
+  check('delete everything empties it', h.clear() === before && before > 0 && h.stats().conversations === 0 && h.stats().turns === 0 && h.latest() === null);
   check('after delete everything, the words are gone from the file', !readFileSync(file).includes(SECRET) && !readFileSync(file).includes('Second conversation'));
   check('settings survive delete everything', h.settings().retentionDays === 0);
   h.close();
@@ -62,7 +88,21 @@ try {
   const again = await openHistory(file);
   again.record(A, 'after reopening', 'still works', t0);
   check('reopening the same file keeps settings and data', again.settings().retentionDays === 0 && again.latest().turns[0].content === 'after reopening');
+  check('search works after reopening', again.search('reopening').length === 1);
   again.close();
+
+  // A file saved by the first version (no search index) gets indexed when opened.
+  const { DatabaseSync } = await import('node:sqlite');
+  const oldFile = path.join(dir, 'old.sqlite');
+  const old = new DatabaseSync(oldFile);
+  old.exec(`create table conversations (id text primary key, started_at integer not null, last_at integer not null);
+    create table turns (id integer primary key, conv text not null references conversations(id) on delete cascade, role text not null, content text not null, at integer not null);
+    create table settings (key text primary key, value text not null);
+    insert into conversations values ('${A}', 1, 1); insert into turns (conv, role, content, at) values ('${A}', 'user', 'saved before search existed', 1);`);
+  old.close();
+  const upgraded = await openHistory(oldFile);
+  check('a file from before search existed is indexed when opened', upgraded.search('existed').length === 1 && upgraded.stats().turns === 1);
+  upgraded.close();
 
   const bad = await openHistory(path.join(file, 'cannot', 'be', 'here.sqlite')); // a path under a file
   check('an unusable path gives a harmless stand-in, not a crash', bad.available === false && typeof bad.reason === 'string' && bad.record(A, 'a', 'b') === false && bad.latest() === null && bad.stats().turns === 0 && bad.settings().enabled === false);

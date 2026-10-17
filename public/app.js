@@ -7,7 +7,7 @@ import { SCHEMA, MAX_RUNS, MIN_FOR_P90, IDLE_MS, kindOf, sameWords, summarize, b
 
 // What this page needs from the server (server.js API_LEVEL). A server started
 // before an update keeps serving new pages until it is restarted.
-const NEEDS_API = 6;
+const NEEDS_API = 7;
 
 const $ = (sel) => document.querySelector(sel);
 const els = {
@@ -52,6 +52,19 @@ const els = {
   newConvo: $('#newConvo'),
   deleteConvo: $('#deleteConvo'),
   deleteAll: $('#deleteAll'),
+  browseHistory: $('#browseHistory'),
+  hv: $('#historyView'),
+  hvBack: $('#hvBack'),
+  hvTitle: $('#hvTitle'),
+  hvExportAll: $('#hvExportAll'),
+  hvSearch: $('#hvSearch'),
+  hvNote: $('#hvNote'),
+  hvList: $('#hvList'),
+  hvConvo: $('#hvConvo'),
+  hvTurns: $('#hvTurns'),
+  hvContinue: $('#hvContinue'),
+  hvExport: $('#hvExport'),
+  hvDelete: $('#hvDelete'),
   micNote: $('#micNote'),
   compare: $('#compare'),
   compareNote: $('#compareNote'),
@@ -653,7 +666,7 @@ function renderSaved(st) {
   els.saveHistory.disabled = els.retention.disabled = !ok;
   els.saveHistory.checked = ok && st.settings.enabled;
   if (ok) els.retention.value = String(st.settings.retentionDays);
-  els.deleteAll.disabled = !ok || !s.conversations;
+  els.deleteAll.disabled = els.browseHistory.disabled = !ok || !s.conversations;
   els.deleteConvo.disabled = !ok || !S.messages.length;
   const kept = ok && s.conversations
     ? `${n(s.conversations, 'conversation')}, ${n(Math.round(s.turns / 2), 'exchange')} since ${new Date(s.oldestAt).toLocaleDateString([], { month: 'short', day: 'numeric' })} · ${s.bytes < 1024 ** 2 ? `${Math.round(s.bytes / 1024)} KB` : fmtBytes(s.bytes)}`
@@ -677,8 +690,133 @@ function carryOn(latest) {
   S.conv = latest.id;
   S.messages = latest.turns.map((t) => ({ role: t.role, content: t.content, at: t.at }));
   for (const t of latest.turns) addBubble(t.role === 'user' ? 'user' : 'q', t.content);
-  systemNote(`Carried on from ${new Date(latest.lastAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · saved on this Mac`);
+  systemNote(`Carried on from ${whenSaid(latest.lastAt)} · saved on this Mac`);
 }
+
+// "2:14 PM" today, "Tue, Oct 14, 2:14 PM" otherwise.
+function whenSaid(ms) {
+  const d = new Date(ms);
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  return d.toDateString() === new Date().toDateString() ? time : `${d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}, ${time}`;
+}
+
+// ---------- browsing saved conversations ----------
+const hv = { conv: null, searchTimer: null, asked: 0 };
+const getJSON = async (url) => {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
+  return r.json();
+};
+
+// Search snippets mark matches with \u0002 … \u0003; turn those into <mark> without ever parsing the text as HTML.
+function markedText(el, text) {
+  el.textContent = '';
+  String(text).split(/(\u0002[^\u0003]*\u0003)/).forEach((part) => {
+    if (part.startsWith('\u0002')) { const m = document.createElement('mark'); m.textContent = part.slice(1, -1); el.appendChild(m); }
+    else if (part) el.appendChild(document.createTextNode(part));
+  });
+}
+
+function hvItem(when, text, onOpen, marked = false) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'hv-item';
+  b.innerHTML = '<span class="when"></span><span class="what"></span>';
+  b.querySelector('.when').textContent = when;
+  if (marked) markedText(b.querySelector('.what'), text); else b.querySelector('.what').textContent = text;
+  b.addEventListener('click', onOpen);
+  return b;
+}
+
+function openHistoryView() {
+  els.hv.hidden = false;
+  els.hvSearch.value = '';
+  showSavedList();
+  els.hvSearch.focus();
+}
+const closeHistoryView = () => { els.hv.hidden = true; };
+
+async function showSavedList() {
+  hv.asked++; // a search still on its way must not replace the list
+  hv.conv = null;
+  els.hvConvo.hidden = true;
+  els.hvList.hidden = false;
+  els.hvTitle.textContent = 'Saved conversations';
+  try {
+    const { conversations } = await getJSON('/api/history/list');
+    els.hvList.replaceChildren(...conversations.map((c) => hvItem(`${whenSaid(c.startedAt)} · ${Math.round(c.turns / 2)} exchange${c.turns === 2 ? '' : 's'}`, c.firstLine || '(no words)', () => openSaved(c.id))));
+    els.hvNote.textContent = conversations.length ? `${conversations.length} conversation${conversations.length === 1 ? '' : 's'}, newest first.` : 'Nothing saved yet.';
+  } catch (err) { els.hvNote.textContent = `Couldn’t load saved conversations: ${err.message}`; }
+}
+
+async function searchSaved(text) {
+  if (!text.trim()) return showSavedList();
+  const asked = ++hv.asked;
+  try {
+    const { results } = await getJSON(`/api/history/search?q=${encodeURIComponent(text)}`);
+    if (asked !== hv.asked) return; // a newer search is on its way
+    hv.conv = null;
+    els.hvConvo.hidden = true;
+    els.hvList.hidden = false;
+    els.hvTitle.textContent = 'Search';
+    els.hvList.replaceChildren(...results.map((r) => hvItem(`${whenSaid(r.at)} · ${r.role === 'user' ? 'You' : 'Q'}`, r.snippet, () => openSaved(r.conv, r.id), true)));
+    els.hvNote.textContent = !results.length ? 'No matches.' : `${results.length}${results.length >= 60 ? ' newest' : ''} match${results.length === 1 ? '' : 'es'}.`;
+  } catch (err) { els.hvNote.textContent = `Search failed: ${err.message}`; }
+}
+
+async function openSaved(id, turnId) {
+  try {
+    const conv = await getJSON(`/api/history/conversation?id=${encodeURIComponent(id)}`);
+    hv.conv = conv;
+    els.hvList.hidden = true;
+    els.hvConvo.hidden = false;
+    els.hvTitle.textContent = whenSaid(conv.startedAt);
+    els.hvContinue.textContent = conv.id === S.conv ? 'Back to this conversation' : 'Continue this conversation';
+    els.hvTurns.replaceChildren(...conv.turns.map((t) => {
+      const el = document.createElement('div');
+      el.className = `hv-turn ${t.role === 'user' ? 'user' : 'q'}${t.id === turnId ? ' found' : ''}`;
+      el.innerHTML = '<span class="who"></span><span class="text"></span>';
+      el.querySelector('.who').textContent = `${t.role === 'user' ? 'You' : 'Q'} · ${whenSaid(t.at)}`;
+      el.querySelector('.text').textContent = t.content;
+      return el;
+    }));
+    els.hvNote.textContent = `${Math.round(conv.turns.length / 2)} exchanges. Continuing it puts it back on screen and Q carries on from it.`;
+    els.hvTurns.querySelector('.found')?.scrollIntoView({ block: 'center' });
+  } catch (err) { els.hvNote.textContent = `Couldn’t open that conversation: ${err.message}`; }
+}
+
+async function exportSaved(body) {
+  els.hvNote.textContent = 'Exporting…';
+  try {
+    const r = await fetch('/api/history/export', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    const out = await r.json();
+    if (!r.ok) throw new Error(out.error || `HTTP ${r.status}`);
+    els.hvNote.textContent = `Saved to ${out.file}`;
+  } catch (err) { els.hvNote.textContent = `Export failed: ${err.message}`; }
+}
+
+els.browseHistory.addEventListener('click', openHistoryView);
+els.hvBack.addEventListener('click', () => (hv.conv && els.hvSearch.value.trim() ? searchSaved(els.hvSearch.value) : hv.conv ? showSavedList() : closeHistoryView()));
+els.hvSearch.addEventListener('input', () => { clearTimeout(hv.searchTimer); hv.searchTimer = setTimeout(() => searchSaved(els.hvSearch.value), 180); });
+els.hvExportAll.addEventListener('click', () => exportSaved({ all: true }));
+els.hvExport.addEventListener('click', () => hv.conv && exportSaved({ conv: hv.conv.id }));
+els.hvContinue.addEventListener('click', () => {
+  const conv = hv.conv;
+  if (!conv) return;
+  closeHistoryView();
+  if (conv.id === S.conv) return;
+  newConversation();
+  carryOn(conv);
+  renderSaved(S.saved);
+});
+els.hvDelete.addEventListener('click', async () => {
+  const conv = hv.conv;
+  if (!conv || !confirm('Delete this conversation from this Mac? This can’t be undone.')) return;
+  if (await postSaved('/api/history/delete', { conv: conv.id })) {
+    if (conv.id === S.conv) newConversation();
+    showSavedList();
+  }
+});
 
 function newConversation() {
   interrupt();
@@ -982,7 +1120,7 @@ async function copyRunData() {
 const typing = (e) => ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName);
 
 window.addEventListener('keydown', (e) => {
-  if (e.code === 'Escape') { interrupt(); return; }
+  if (e.code === 'Escape') { if (!els.hv.hidden) closeHistoryView(); else interrupt(); return; }
   if (e.code === 'Space' && !typing(e)) {
     e.preventDefault();
     if (!e.repeat) pttDown();
@@ -1019,6 +1157,7 @@ els.canvas.addEventListener('click', orbClick);
 // The window decides which and tells the page; the page asks to switch.
 function setCompact(on) {
   compact = !!on;
+  if (compact) closeHistoryView();
   document.documentElement.classList.toggle('compact', compact);
   core.pauseWhenIdle = compact;
   core.kick();

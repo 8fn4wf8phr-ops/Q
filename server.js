@@ -49,12 +49,14 @@ const DEFAULTS = {
   // Where conversations are saved. Empty means ~/Library/Application Support/Q/history.sqlite,
   // which is outside this folder so it can never be committed by accident.
   historyFile: '',
+  // Where exported conversations are written. Empty means ~/Downloads.
+  exportDir: '',
 };
 
 const CONFIG = await loadConfig();
 // Raised whenever the page starts needing something new from the server, so a
 // page served by a server that hasn't been restarted can say so.
-const API_LEVEL = 6;
+const API_LEVEL = 7;
 const VERSION = await readFile(path.join(ROOT, 'package.json'), 'utf8').then((t) => JSON.parse(t).version).catch(() => null);
 let stopping = false;
 
@@ -80,6 +82,24 @@ function fromOwnPage(req) {
   if (origin && !hosts.some((h) => origin === `http://${h}`)) return false;
   const site = req.headers['sec-fetch-site'];
   return !site || site === 'same-origin' || site === 'none';
+}
+
+// Exports go to the Downloads folder under a name that never overwrites an
+// earlier file. Returns the path as it should be shown (~/Downloads/…).
+async function writeExport(markdown, label) {
+  const dir = CONFIG.exportDir || path.join(homedir(), 'Downloads');
+  const d = new Date();
+  const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`;
+  for (let n = 1; n < 100; n++) {
+    const file = path.join(dir, `Q ${label} ${stamp}${n > 1 ? ` (${n})` : ''}.md`);
+    try {
+      await writeFile(file, markdown, { flag: 'wx', mode: 0o600 }); // wx: fail rather than overwrite
+      return file.replace(homedir(), '~');
+    } catch (err) {
+      if (err.code !== 'EEXIST') throw err;
+    }
+  }
+  throw new Error('too many exports with the same name this minute');
 }
 
 function historyState(withLatest) {
@@ -994,6 +1014,20 @@ const server = http.createServer(async (req, res) => {
         saved.setSettings({ enabled: body.enabled, retentionDays: body.retentionDays });
         pruneHistory();
         return json(res, 200, historyState(false));
+      }
+      const params = new URL(req.url, 'http://localhost').searchParams;
+      if (req.method === 'GET' && pathname === '/api/history/list') return json(res, 200, { conversations: saved.list() });
+      if (req.method === 'GET' && pathname === '/api/history/search') return json(res, 200, { results: saved.search(params.get('q'), 60) });
+      if (req.method === 'GET' && pathname === '/api/history/conversation') {
+        const conv = saved.conversation(params.get('id'));
+        return conv ? json(res, 200, conv) : json(res, 404, { error: 'no such conversation' });
+      }
+      if (req.method === 'POST' && pathname === '/api/history/export') {
+        const body = JSON.parse((await readBody(req, 10_000)).toString('utf8') || '{}');
+        const one = body.all !== true;
+        if (one && !saved.conversation(body.conv)) return json(res, 404, { error: 'no such conversation' });
+        const file = await writeExport(saved.exportMarkdown(one ? [body.conv] : undefined), one ? 'conversation' : 'conversations');
+        return json(res, 200, { file });
       }
       if (req.method === 'POST' && pathname === '/api/history/delete') {
         const body = JSON.parse((await readBody(req, 10_000)).toString('utf8') || '{}');
